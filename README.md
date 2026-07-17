@@ -1,7 +1,5 @@
-# Counterfactual Malware Explanation — Prototype
+# Counterfactual
 
-This repository is a prototype scaffold implementing the design from
-`counterfactual_malware_explanation_design.md`.
 
 Quick start (create a virtualenv, install requirements, run CLI):
 
@@ -12,8 +10,7 @@ pip install -r requirements.txt
 python -m src.cli parse --input path/to/cape_report.json
 ```
 
-Current contents:
-Current contents:
+Contents:
 - `src/ingestion/parser.py`: CAPE JSON -> event list parser (skeletal)
 - `src/graph/graph_builder.py`: behavior graph builder and coalescing heuristics
 - `src/counterfactual/search.py`: counterfactual search skeleton (placeholder)
@@ -21,6 +18,3 @@ Current contents:
 - `src/classifier/`: classifier harness and model wrappers (LightGBM + GNN stub)
 - `src/utils/graph_features.py`: graph -> bag-of-API features for LightGBM baseline
 
-
-Next steps: implement classifier harness GNN training, counterfactual engine, feasibility checker, and Tier-2 validation harness.
-Next steps: implement classifier harness, counterfactual engine, feasibility checker, and Tier-2 validation harness.
