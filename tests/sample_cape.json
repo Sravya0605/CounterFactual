@@ -1,0 +1,15 @@
+{
+  "behavior": {
+    "processes": [
+      {
+        "pid": 1000,
+        "calls": [
+          {"api": "CreateFile", "timestamp": 1, "arguments": {"filename": "C:\\Windows\\temp\\x.dll"}},
+          {"api": "WriteFile", "timestamp": 2, "arguments": {"file": "C:\\Windows\\temp\\x.dll"}},
+          {"api": "RegSetValue", "timestamp": 3, "arguments": {"regkey": "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run"}},
+          {"api": "CreateScheduledTask", "timestamp": 4, "arguments": {"name": "UpdaterTask"}}
+        ]
+      }
+    ]
+  }
+}

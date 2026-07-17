@@ -1,0 +1,3 @@
+# Add CAPE JSON samples here for local testing.
+# The repository currently contains a skeletal parser and graph builder.
+# Place one or more CAPE JSON report files in this folder for running the CLI.

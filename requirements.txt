@@ -1,0 +1,9 @@
+torch>=2.0.0
+torch-geometric
+networkx
+numpy
+pandas
+scikit-learn
+lightgbm
+tqdm
+python-dateutil
