@@ -4,18 +4,16 @@ Computes node importance via gradients on a PyG GNN model's input features,
 ranks nodes by L2 gradient norm, and returns deletion/substitution candidates
 focused on the top-ranked nodes.
 """
-from typing import List, Dict, Any
-import torch
+from typing import Any, Dict, List
+
 import networkx as nx
+import torch
+
 from src.utils.pyg_adapter import build_api_vocab, graph_to_pyg_data
 
 
 def node_importance_via_gradients(model: Any, G: nx.DiGraph) -> List[float]:
-    """Return a list of importance scores (one per node in G) using gradients.
-
-    Higher score = more important. Assumes `model` is a PyG-compatible
-    torch `nn.Module` that maps node features/edges -> graph logit.
-    """
+    """Return a list of importance scores (one per node in G) using gradients."""
     vocab = build_api_vocab([G])
     data = graph_to_pyg_data(G, vocab)
     x = data.x.clone().detach()
@@ -24,15 +22,11 @@ def node_importance_via_gradients(model: Any, G: nx.DiGraph) -> List[float]:
     model.eval()
     with torch.enable_grad():
         out = model(x, data.edge_index)
-        # if out is a scalar per graph, ensure shape
         if out.dim() == 0:
             out = out.unsqueeze(0)
-        # take the graph logit (assumes single graph in data)
-        logit = out
-        loss = torch.sigmoid(logit).sum()
+        loss = torch.sigmoid(out).sum()
         loss.backward()
         grads = x.grad
-        # importance = L2 norm per node
         scores = grads.norm(p=2, dim=1).tolist()
     return scores
 

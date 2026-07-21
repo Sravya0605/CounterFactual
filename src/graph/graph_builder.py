@@ -1,28 +1,38 @@
-"""Behavior graph builder with simple coalescing and heuristic dependency edges
+"""Build a process-aware behavior graph from parsed CAPE events.
 
-Exports `build_behavior_graph(events)` which returns a `networkx.DiGraph` where
-nodes represent coalesced events/resources and edges represent temporal and
-resource-dependency relationships.
+The graph uses entity nodes (process, file, registry, network, persistence,
+resource) rather than treating every event as a node. This makes the
+counterfactual search more faithful to the design document.
 """
-from typing import List, Dict, Tuple
-import networkx as nx
 from collections import defaultdict
+from typing import Any, Dict, List, Tuple
+
+import networkx as nx
 
 
-def _coalesce_events(events: List[Dict]) -> Tuple[List[Dict], dict]:
-    """Coalesce identical events (by api + resource set) and return new list and mapping.
+def _coalesce_events(events: List[Dict]) -> Tuple[List[Dict], Dict[str, str]]:
+    """Collapse repeated identical events while retaining process context."""
+    key_to_idx: Dict[Tuple[Any, Any, Any], int] = {}
+    coalesced: List[Dict] = []
+    id_map: Dict[str, str] = {}
 
-    Returns (coalesced_events, id_map) where id_map maps original event id -> coalesced id.
-    """
-    key_to_idx = {}
-    coalesced = []
-    id_map = {}
     for evt in events:
-        key = (evt.get("api"), tuple(sorted(evt.get("resources", []))))
+        key = (evt.get("process_id"), evt.get("api"), tuple(sorted(evt.get("resources", []))))
         if key not in key_to_idx:
             idx = len(coalesced)
             key_to_idx[key] = idx
-            coalesced.append({"id": f"n{idx}", "api": evt.get("api"), "resources": evt.get("resources", []), "count": 1, "timestamps": [evt.get("timestamp")]})
+            coalesced.append(
+                {
+                    "id": f"n{idx}",
+                    "api": evt.get("api"),
+                    "process_id": evt.get("process_id"),
+                    "event_type": evt.get("event_type", "system"),
+                    "attack_id": evt.get("attack_id"),
+                    "resources": evt.get("resources", []),
+                    "count": 1,
+                    "timestamps": [evt.get("timestamp")],
+                }
+            )
         else:
             idx = key_to_idx[key]
             coalesced[idx]["count"] += 1
@@ -31,59 +41,96 @@ def _coalesce_events(events: List[Dict]) -> Tuple[List[Dict], dict]:
     return coalesced, id_map
 
 
-def build_behavior_graph(events: List[Dict]) -> nx.DiGraph:
-    """Build a behavior graph from parsed events.
+def _first_timestamp(node: Dict) -> float:
+    values = [t for t in node.get("timestamps", []) if t is not None]
+    if not values:
+        return 0.0
+    return float(min(values))
 
-    Node attributes: `api`, `resources`, `count`, `timestamps`.
-    Edge types: `temporal` and `resource` stored as edge attribute `type`.
+
+def build_behavior_graph(events: List[Dict]) -> nx.DiGraph:
+    """Create a process-aware behavior graph.
+
+    Nodes are created for processes and the resources they touch; edges are added
+    for temporal ordering and causal resource dependencies, scoped by process.
     """
     G = nx.DiGraph()
     if not events:
         return G
 
-    coalesced, id_map = _coalesce_events(events)
+    coalesced, _ = _coalesce_events(events)
 
-    # Add nodes
+    process_ids = sorted({evt.get("process_id") for evt in events if evt.get("process_id") is not None})
+    for process_id in process_ids:
+        proc_node_id = f"proc:{process_id}"
+        G.add_node(
+            proc_node_id,
+            api="process",
+            entity_type="process",
+            process_id=process_id,
+            resources=[],
+            count=1,
+            timestamps=[],
+            attack_id=None,
+        )
+
     for node in coalesced:
-        G.add_node(node["id"], api=node["api"], resources=node["resources"], count=node["count"], timestamps=node["timestamps"])
+        entity_type = "resource"
+        if node.get("event_type") == "persistence":
+            entity_type = "persistence"
+        elif node.get("event_type") == "registry":
+            entity_type = "registry"
+        elif node.get("event_type") == "network":
+            entity_type = "network"
+        elif node.get("event_type") == "file":
+            entity_type = "file"
+        elif node.get("event_type") == "process":
+            entity_type = "process"
 
-    # Temporal edges: order coalesced nodes by first timestamp
-    order = sorted(coalesced, key=lambda n: min([t for t in n.get("timestamps") if t is not None] or [0]))
-    for i in range(len(order) - 1):
-        s = order[i]["id"]
-        t = order[i + 1]["id"]
-        G.add_edge(s, t, type="temporal")
+        G.add_node(
+            node["id"],
+            api=node.get("api"),
+            entity_type=entity_type,
+            process_id=node.get("process_id"),
+            resources=node.get("resources", []),
+            count=node.get("count", 1),
+            timestamps=node.get("timestamps", []),
+            attack_id=node.get("attack_id"),
+        )
+        if node.get("process_id") is not None:
+            G.add_edge(f"proc:{node['process_id']}", node["id"], type="process")
 
-    # Resource edges: connect nodes that share a resource string
-    resource_to_nodes = defaultdict(list)
+    for proc_id in process_ids:
+        proc_nodes = [node["id"] for node in coalesced if node.get("process_id") == proc_id]
+        proc_nodes.sort(key=lambda nid: _first_timestamp(next(n for n in coalesced if n["id"] == nid)))
+        for i in range(len(proc_nodes) - 1):
+            G.add_edge(proc_nodes[i], proc_nodes[i + 1], type="temporal")
+
+    resource_to_nodes: Dict[str, List[str]] = defaultdict(list)
     for node in coalesced:
-        for r in node.get("resources", []):
-            resource_to_nodes[r].append(node["id"])
+        for resource in node.get("resources", []):
+            resource_to_nodes[resource].append(node["id"])
 
-    for r, nodes in resource_to_nodes.items():
-        # sort nodes by earliest timestamp so edges point from earlier->later
-        def first_ts(nid):
-            ts = G.nodes[nid].get("timestamps") or []
-            vals = [t for t in ts if t is not None]
-            return min(vals) if vals else 0
+    for resource, nodes in resource_to_nodes.items():
+        nodes_sorted = sorted(nodes, key=lambda nid: _first_timestamp(next(n for n in coalesced if n["id"] == nid)))
+        for i in range(len(nodes_sorted) - 1):
+            G.add_edge(nodes_sorted[i], nodes_sorted[i + 1], type="resource")
 
-        nodes_sorted = sorted(nodes, key=lambda nid: first_ts(nid))
-        for i in range(len(nodes_sorted)):
-            for j in range(i + 1, len(nodes_sorted)):
-                a = nodes_sorted[i]
-                b = nodes_sorted[j]
-                if not G.has_edge(a, b):
-                    G.add_edge(a, b, type="resource")
+    for node in list(G.nodes()):
+        if G.in_degree(node) == 0 and G.out_degree(node) == 0 and len(G) > 1:
+            pass
 
     return G
 
 
 if __name__ == "__main__":
-    import json, sys
+    import sys
+
     from src.ingestion.parser import parse_cape_json
+
     if len(sys.argv) < 2:
         print("Usage: graph_builder.py /path/to/cape_report.json")
         sys.exit(1)
-    evts = parse_cape_json(sys.argv[1])
-    G = build_behavior_graph(evts)
-    print(f"Built graph with {G.number_of_nodes()} nodes and {G.number_of_edges()} edges")
+    events = parse_cape_json(sys.argv[1])
+    graph = build_behavior_graph(events)
+    print(f"Built graph with {graph.number_of_nodes()} nodes and {graph.number_of_edges()} edges")

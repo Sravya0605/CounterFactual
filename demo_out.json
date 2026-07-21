@@ -1,0 +1,8 @@
+{
+  "input": "C:\\projects\\counterfactual\\tests\\sample_cape.json",
+  "graph_nodes": 5,
+  "graph_edges": 7,
+  "result": {
+    "status": "no_flip_found"
+  }
+}

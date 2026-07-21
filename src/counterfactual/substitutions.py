@@ -1,32 +1,31 @@
-"""Behavioral substitution library (curated pairs).
+"""Behavioral substitution library for the prototype.
 
-This small library provides a hand-curated set of behaviorally-equivalent
-substitutions useful for prototyping node-substitution edits. Real research
-should expand and validate this list; here we provide a simple programmatic
-interface used by the counterfactual search skeleton.
+The library is intentionally small but explicit: each pair encodes a plausible
+behavioral-equivalence claim that can be used in the counterfactual search.
 """
 from typing import List
 
 SUBSTITUTION_LIBRARY = {
-    # common persistence patterns (heuristic keys)
     "RegSetValue": ["CreateScheduledTask", "CreateService"],
     "CreateService": ["RegSetValue", "CreateScheduledTask"],
     "CreateScheduledTask": ["RegSetValue", "CreateService"],
-    # process injection variants
     "CreateRemoteThread": ["APCInject", "ProcessHollow"],
     "APCInject": ["CreateRemoteThread", "ProcessHollow"],
+    "WriteFile": ["CreateFile"],
+    "CreateFile": ["WriteFile"],
 }
 
 
 def get_substitutes(api_name: str) -> List[str]:
-    """Return a list of substitute api names for a given api_name.
-
-    Matches exact keys first; then falls back to substring matching.
-    """
+    """Return a list of substitute API names for a given API."""
+    if api_name is None:
+        return []
     if api_name in SUBSTITUTION_LIBRARY:
         return SUBSTITUTION_LIBRARY[api_name]
-    # substring fallback
-    for key, vals in SUBSTITUTION_LIBRARY.items():
-        if key.lower() in api_name.lower():
-            return vals
+    normalized = api_name.lower()
+    for key, values in SUBSTITUTION_LIBRARY.items():
+        if normalized == key.lower():
+            return values
+        if key.lower() in normalized:
+            return values
     return []

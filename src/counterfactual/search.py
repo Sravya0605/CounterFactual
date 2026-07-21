@@ -1,15 +1,22 @@
-"""Counterfactual search engine skeleton.
-
-This file contains a minimal skeleton for the counterfactual search engine described
-in the design doc. The full implementation (CF-GNNExplainer adaptation, validity
-checker, substitution library) will be added iteratively.
-"""
+"""Counterfactual search engine skeleton."""
 from typing import Any, Dict, List, Optional
+
 import networkx as nx
+
 from src.counterfactual import feasibility, substitutions
-from src.utils.pyg_adapter import build_api_vocab, graph_to_pyg_data
-from src.classifier.gnn_model import SimpleGCN
-import torch
+
+try:
+    from src.classifier.gnn_model import SimpleGCN
+except Exception:  # pragma: no cover - optional dependency
+    SimpleGCN = None
+
+try:
+    from src.utils.pyg_adapter import build_api_vocab, graph_to_pyg_data
+    import torch
+except Exception:  # pragma: no cover - optional dependency
+    build_api_vocab = None
+    graph_to_pyg_data = None
+    torch = None
 
 
 class CounterfactualSearch:

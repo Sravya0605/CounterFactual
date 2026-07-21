@@ -1,75 +1,128 @@
-"""CAPE JSON ingestion -> event list
+"""CAPE JSON ingestion -> normalized event list.
 
-This module provides a lightweight parser that converts a CAPE sandbox JSON
-report into a list of event dicts with normalized fields used by the graph
-builder.
-
-The parser is intentionally tolerant: it tries to find common CAPE fields but
-falls back gracefully when keys are missing. For production use, refine this
-based on the exact CAPE JSON version you run.
+The parser keeps process context, event categories, and resource hints so the
+subsequent graph builder can create process-aware entity graphs rather than a
+flat event stream.
 """
-import json
 import hashlib
-from typing import List, Dict
+import json
+from typing import Any, Dict, List, Optional
 
 RESOURCE_KEYS = ("file", "filename", "path", "regkey", "key", "ip", "domain", "url")
+ATTACK_HINTS = {
+    "createfile": "T1105",
+    "writefile": "T1027",
+    "regsetvalue": "T1547",
+    "createscheduledtask": "T1053.005",
+    "createservice": "T1543.003",
+    "createremotethread": "T1055.003",
+}
 
 
-def _hash_event(evt: Dict) -> str:
-    s = json.dumps(evt, sort_keys=True)
-    return hashlib.sha1(s.encode("utf-8")).hexdigest()
+def _hash_event(evt: Dict[str, Any]) -> str:
+    payload = json.dumps(evt, sort_keys=True, default=str)
+    return hashlib.sha1(payload.encode("utf-8")).hexdigest()
 
 
-def parse_cape_json(path: str) -> List[Dict]:
-    """Parse a CAPE JSON report and return a list of normalized events.
+def _normalize_resource(value: Any) -> Optional[str]:
+    if value is None:
+        return None
+    if isinstance(value, (list, tuple)):
+        values = [str(v) for v in value if v is not None]
+        return ", ".join(values) if values else None
+    if isinstance(value, dict):
+        return json.dumps(value, sort_keys=True, default=str)
+    return str(value)
 
-    Each event is a dict with keys: `id`, `api`, `timestamp`, `args`, `resources`.
+
+def _classify_event(api: str, args: Dict[str, Any]) -> Dict[str, Any]:
+    normalized_api = (api or "unknown").lower()
+    event_type = "system"
+    if "file" in normalized_api or "create" in normalized_api:
+        event_type = "file"
+    if "reg" in normalized_api or "registry" in normalized_api:
+        event_type = "registry"
+    if "socket" in normalized_api or "connect" in normalized_api or "dns" in normalized_api:
+        event_type = "network"
+    if "process" in normalized_api or "thread" in normalized_api:
+        event_type = "process"
+    if "task" in normalized_api or "service" in normalized_api:
+        event_type = "persistence"
+
+    resources = []
+    if isinstance(args, dict):
+        for key, value in args.items():
+            key_low = str(key).lower()
+            if any(key_low == candidate or candidate in key_low for candidate in RESOURCE_KEYS):
+                resource = _normalize_resource(value)
+                if resource is not None:
+                    resources.append(resource)
+    attack_id = None
+    for token, hint in ATTACK_HINTS.items():
+        if token in normalized_api:
+            attack_id = hint
+            break
+    return {"event_type": event_type, "resources": resources, "attack_id": attack_id}
+
+
+def parse_cape_json(path: str) -> List[Dict[str, Any]]:
+    """Parse a CAPE JSON report and return normalized events.
+
+    Each event carries process_id, timestamp, event_type, attack_id, resources,
+    and a stable id.
     """
-    with open(path, "r", encoding="utf-8") as f:
-        report = json.load(f)
+    try:
+        with open(path, "r", encoding="utf-8") as handle:
+            report = json.load(handle)
+    except FileNotFoundError as exc:
+        raise FileNotFoundError(f"CAPE report not found: {path}") from exc
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"Malformed JSON in CAPE report: {path}") from exc
 
-    events = []
-
-    # CAPE reports typically have report['behavior']['processes'] -> list
-    processes = []
+    events: List[Dict[str, Any]] = []
+    processes: List[Dict[str, Any]] = []
     if isinstance(report.get("behavior"), dict) and isinstance(report["behavior"].get("processes"), list):
         processes = report["behavior"]["processes"]
     elif isinstance(report.get("processes"), list):
         processes = report["processes"]
 
-    # Flatten process->calls if present
     for proc in processes:
-        calls = proc.get("calls") or proc.get("calls") or []
+        proc_id = proc.get("pid") or proc.get("process_id") or proc.get("name") or "unknown"
+        calls = proc.get("calls") or []
         for call in calls:
             api = call.get("api") or call.get("name") or "unknown"
-            ts = call.get("timestamp") or call.get("time") or proc.get("timestamp")
+            timestamp = call.get("timestamp") or call.get("time") or proc.get("timestamp")
             args = call.get("arguments") or call.get("args") or {}
-            # Extract resources heuristically from args
-            resources = []
-            if isinstance(args, dict):
-                for k, v in args.items():
-                    key_low = str(k).lower()
-                    if any(rk in key_low for rk in RESOURCE_KEYS):
-                        resources.append(str(v))
-
-            evt = {"api": api, "timestamp": ts, "args": args, "resources": resources}
+            metadata = _classify_event(api, args)
+            evt = {
+                "id": None,
+                "api": api,
+                "process_id": proc_id,
+                "timestamp": timestamp,
+                "args": args,
+                "event_type": metadata["event_type"],
+                "resources": metadata["resources"],
+                "attack_id": metadata["attack_id"],
+            }
             evt["id"] = _hash_event(evt)
             events.append(evt)
 
-    # Fallback: some CAPE variants put calls under report['calls']
     if not events and isinstance(report.get("calls"), list):
         for call in report["calls"]:
             api = call.get("api") or call.get("name") or "unknown"
-            ts = call.get("timestamp") or call.get("time")
+            timestamp = call.get("timestamp") or call.get("time")
             args = call.get("arguments") or call.get("args") or {}
-            resources = []
-            if isinstance(args, dict):
-                for k, v in args.items():
-                    key_low = str(k).lower()
-                    if any(rk in key_low for rk in RESOURCE_KEYS):
-                        resources.append(str(v))
-
-            evt = {"api": api, "timestamp": ts, "args": args, "resources": resources}
+            metadata = _classify_event(api, args)
+            evt = {
+                "id": None,
+                "api": api,
+                "process_id": "root",
+                "timestamp": timestamp,
+                "args": args,
+                "event_type": metadata["event_type"],
+                "resources": metadata["resources"],
+                "attack_id": metadata["attack_id"],
+            }
             evt["id"] = _hash_event(evt)
             events.append(evt)
 
@@ -78,6 +131,7 @@ def parse_cape_json(path: str) -> List[Dict]:
 
 if __name__ == "__main__":
     import sys
+
     if len(sys.argv) < 2:
         print("Usage: parser.py /path/to/cape_report.json")
         sys.exit(1)
