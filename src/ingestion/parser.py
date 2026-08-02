@@ -8,7 +8,7 @@ import hashlib
 import json
 from typing import Any, Dict, List, Optional
 
-RESOURCE_KEYS = ("file", "filename", "path", "regkey", "key", "ip", "domain", "url")
+RESOURCE_KEYS = ("file", "filename", "path", "regkey", "registry_key", "ip", "domain", "url")
 ATTACK_HINTS = {
     "createfile": "T1105",
     "writefile": "T1027",
@@ -35,25 +35,32 @@ def _normalize_resource(value: Any) -> Optional[str]:
     return str(value)
 
 
+def _looks_like_resource_key(key: str) -> bool:
+    key_low = str(key).lower()
+    if key_low in RESOURCE_KEYS:
+        return True
+    return any(key_low.startswith(candidate) or key_low.endswith(candidate) for candidate in RESOURCE_KEYS)
+
+
 def _classify_event(api: str, args: Dict[str, Any]) -> Dict[str, Any]:
     normalized_api = (api or "unknown").lower()
-    event_type = "system"
-    if "file" in normalized_api or "create" in normalized_api:
-        event_type = "file"
-    if "reg" in normalized_api or "registry" in normalized_api:
-        event_type = "registry"
-    if "socket" in normalized_api or "connect" in normalized_api or "dns" in normalized_api:
-        event_type = "network"
     if "process" in normalized_api or "thread" in normalized_api:
         event_type = "process"
-    if "task" in normalized_api or "service" in normalized_api:
+    elif "task" in normalized_api or "service" in normalized_api:
         event_type = "persistence"
+    elif "socket" in normalized_api or "connect" in normalized_api or "dns" in normalized_api:
+        event_type = "network"
+    elif "reg" in normalized_api or "registry" in normalized_api:
+        event_type = "registry"
+    elif "file" in normalized_api or "create" in normalized_api:
+        event_type = "file"
+    else:
+        event_type = "system"
 
     resources = []
     if isinstance(args, dict):
         for key, value in args.items():
-            key_low = str(key).lower()
-            if any(key_low == candidate or candidate in key_low for candidate in RESOURCE_KEYS):
+            if _looks_like_resource_key(key):
                 resource = _normalize_resource(value)
                 if resource is not None:
                     resources.append(resource)
@@ -86,8 +93,8 @@ def parse_cape_json(path: str) -> List[Dict[str, Any]]:
     elif isinstance(report.get("processes"), list):
         processes = report["processes"]
 
-    for proc in processes:
-        proc_id = proc.get("pid") or proc.get("process_id") or proc.get("name") or "unknown"
+    for idx, proc in enumerate(processes):
+        proc_id = proc.get("pid") or proc.get("process_id") or proc.get("name") or f"proc:{idx}"
         calls = proc.get("calls") or []
         for call in calls:
             api = call.get("api") or call.get("name") or "unknown"
@@ -108,7 +115,7 @@ def parse_cape_json(path: str) -> List[Dict[str, Any]]:
             events.append(evt)
 
     if not events and isinstance(report.get("calls"), list):
-        for call in report["calls"]:
+        for idx, call in enumerate(report["calls"]):
             api = call.get("api") or call.get("name") or "unknown"
             timestamp = call.get("timestamp") or call.get("time")
             args = call.get("arguments") or call.get("args") or {}
@@ -116,7 +123,7 @@ def parse_cape_json(path: str) -> List[Dict[str, Any]]:
             evt = {
                 "id": None,
                 "api": api,
-                "process_id": "root",
+                "process_id": f"root:{idx}",
                 "timestamp": timestamp,
                 "args": args,
                 "event_type": metadata["event_type"],

@@ -12,9 +12,9 @@ import torch
 from src.utils.pyg_adapter import build_api_vocab, graph_to_pyg_data
 
 
-def node_importance_via_gradients(model: Any, G: nx.DiGraph) -> List[float]:
+def node_importance_via_gradients(model: Any, G: nx.DiGraph, api_vocab: Any = None) -> List[float]:
     """Return a list of importance scores (one per node in G) using gradients."""
-    vocab = build_api_vocab([G])
+    vocab = api_vocab if api_vocab is not None else build_api_vocab([G])
     data = graph_to_pyg_data(G, vocab)
     x = data.x.clone().detach()
     x.requires_grad = True
@@ -31,14 +31,14 @@ def node_importance_via_gradients(model: Any, G: nx.DiGraph) -> List[float]:
     return scores
 
 
-def propose_from_gradients(model: Any, G: nx.DiGraph, top_k: int = 10) -> List[Dict]:
+def propose_from_gradients(model: Any, G: nx.DiGraph, top_k: int = 10, api_vocab: Any = None) -> List[Dict]:
     """Produce candidate edits based on top-k gradient-ranked nodes.
 
     Returns a list of candidate dicts compatible with `search.CounterfactualSearch`.
     For now, candidates are single-node deletions for top-k nodes, plus pairwise
     deletions among the top `min(5, top_k)` nodes.
     """
-    scores = node_importance_via_gradients(model, G)
+    scores = node_importance_via_gradients(model, G, api_vocab=api_vocab)
     nodes = list(G.nodes())
     ranked = sorted(range(len(scores)), key=lambda i: scores[i], reverse=True)
     cands = []

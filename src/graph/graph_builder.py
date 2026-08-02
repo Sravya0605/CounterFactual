@@ -76,6 +76,7 @@ def build_behavior_graph(events: List[Dict]) -> nx.DiGraph:
 
     for node in coalesced:
         entity_type = "resource"
+        api_name = str(node.get("api") or "").lower()
         if node.get("event_type") == "persistence":
             entity_type = "persistence"
         elif node.get("event_type") == "registry":
@@ -86,6 +87,8 @@ def build_behavior_graph(events: List[Dict]) -> nx.DiGraph:
             entity_type = "file"
         elif node.get("event_type") == "process":
             entity_type = "process"
+        elif any(token in api_name for token in {"dll", "module", "library"}):
+            entity_type = "module"
 
         G.add_node(
             node["id"],
@@ -106,19 +109,16 @@ def build_behavior_graph(events: List[Dict]) -> nx.DiGraph:
         for i in range(len(proc_nodes) - 1):
             G.add_edge(proc_nodes[i], proc_nodes[i + 1], type="temporal")
 
-    resource_to_nodes: Dict[str, List[str]] = defaultdict(list)
+    resource_to_nodes: Dict[Tuple[str, str], List[str]] = defaultdict(list)
     for node in coalesced:
+        process_id = node.get("process_id") or "global"
         for resource in node.get("resources", []):
-            resource_to_nodes[resource].append(node["id"])
+            resource_to_nodes[(str(process_id), resource)].append(node["id"])
 
-    for resource, nodes in resource_to_nodes.items():
+    for (process_id, resource), nodes in resource_to_nodes.items():
         nodes_sorted = sorted(nodes, key=lambda nid: _first_timestamp(next(n for n in coalesced if n["id"] == nid)))
         for i in range(len(nodes_sorted) - 1):
             G.add_edge(nodes_sorted[i], nodes_sorted[i + 1], type="resource")
-
-    for node in list(G.nodes()):
-        if G.in_degree(node) == 0 and G.out_degree(node) == 0 and len(G) > 1:
-            pass
 
     return G
 

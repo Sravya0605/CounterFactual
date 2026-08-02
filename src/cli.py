@@ -45,6 +45,18 @@ def cmd_demo(args):
     cmd_explain(argparse.Namespace(input=str(default_input), out=args.out, backend=args.backend))
 
 
+def cmd_batch(args):
+    input_dir = Path(args.input_dir)
+    output_dir = Path(args.out_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    reports = sorted(input_dir.glob("*.json")) if input_dir.exists() else []
+    for report_path in reports:
+        engine = CounterfactualEngine(classifier_backend=args.backend)
+        out_path = output_dir / f"{report_path.stem}.json"
+        engine.explain_and_write(str(report_path), str(out_path))
+    print(f"Processed {len(reports)} reports into {output_dir}")
+
+
 def build_parser():
     parser = argparse.ArgumentParser("counterfactual-proto")
     subparsers = parser.add_subparsers(dest="cmd")
@@ -72,6 +84,16 @@ def build_parser():
         help="Classifier backend to use",
     )
 
+    batch_parser = subparsers.add_parser("batch", help="Run the prototype over a directory of CAPE JSON reports")
+    batch_parser.add_argument("--input-dir", required=True, help="Directory containing CAPE JSON reports")
+    batch_parser.add_argument("--out-dir", required=True, help="Directory for explanation JSON outputs")
+    batch_parser.add_argument(
+        "--backend",
+        default="heuristic",
+        choices=["heuristic", "lgbm", "gnn", "sklearn"],
+        help="Classifier backend to use",
+    )
+
     return parser
 
 
@@ -85,6 +107,8 @@ def main():
         cmd_explain(args)
     elif args.cmd == "demo":
         cmd_demo(args)
+    elif args.cmd == "batch":
+        cmd_batch(args)
     else:
         parser.print_help()
 

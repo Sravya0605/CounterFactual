@@ -22,7 +22,8 @@ class SimpleGCN(nn.Module):
         self.conv2 = GCNConv(hidden, hidden)
         self.lin = Linear(hidden, out_channels)
 
-    def forward(self, x, edge_index, batch=None):
+    def forward(self, x, edge_index, batch=None, edge_attr=None):
+        _ = edge_attr
         x = F.relu(self.conv1(x, edge_index))
         x = F.relu(self.conv2(x, edge_index))
         if batch is not None:

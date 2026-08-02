@@ -1,8 +1,7 @@
 """A lightweight heuristic classifier for behavior-graph explanations.
 
-This provides a deterministic scoring function based on common suspicious APIs
-and persistence-related behavior. It is intentionally simple so the prototype can
-run end to end even when heavier ML dependencies are unavailable.
+This provides a deterministic scoring function for smoke tests and fast demos.
+It is intentionally simple and should not be treated as a production evaluator.
 """
 from typing import Any, List
 
@@ -34,5 +33,6 @@ class HeuristicClassifier:
                     break
         if total <= 0.0:
             return 0.15
-        normalized = min(0.99, 0.15 + total / max(1, graph.number_of_nodes() * 2))
+        node_scale = max(1.0, graph.number_of_nodes() * 0.6)
+        normalized = min(0.99, 0.15 + total / node_scale)
         return round(normalized, 4)

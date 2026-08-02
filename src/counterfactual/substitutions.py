@@ -5,6 +5,22 @@ behavioral-equivalence claim that can be used in the counterfactual search.
 """
 from typing import List
 
+
+def update_resources_for_substitution(api_name: str, original_resources: List[str] | None = None) -> List[str]:
+    """Return a resource list that reflects the substituted API."""
+    resources = list(original_resources or [])
+    if not resources:
+        return [api_name.lower()] if api_name else []
+    prefix = (api_name or "").lower()
+    updated = []
+    for resource in resources:
+        resource_text = str(resource)
+        if resource_text.startswith(f"{prefix}:"):
+            updated.append(resource_text)
+        else:
+            updated.append(f"{prefix}:{resource_text}")
+    return updated
+
 SUBSTITUTION_LIBRARY = {
     "RegSetValue": ["CreateScheduledTask", "CreateService"],
     "CreateService": ["RegSetValue", "CreateScheduledTask"],

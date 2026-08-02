@@ -20,9 +20,14 @@ def generate_synthetic_cape_report(G: nx.DiGraph, out_path: str) -> None:
     processes = []
     calls = []
     ts = 1
-    for n, d in G.nodes(data=True):
+    for n, d in sorted(G.nodes(data=True), key=lambda item: item[0]):
+        if d.get("entity_type") == "process":
+            continue
         api = d.get("api", "unknown")
-        args = {"resources": d.get("resources", [])}
+        if not api or str(api).lower() == "process":
+            continue
+        resources = d.get("resources", []) or []
+        args = {"path": resources[0] if resources else None, "resources": resources}
         calls.append({"api": api, "timestamp": ts, "arguments": args})
         ts += 1
 
