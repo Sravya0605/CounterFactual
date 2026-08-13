@@ -52,6 +52,17 @@ def validate_candidate(G: nx.DiGraph, candidate: Dict) -> bool:
     if not meaningful:
         return False
 
+    # If the original trace had at least one process node, the edit must not
+    # remove every one of them — a behavior graph stripped of all process
+    # context can no longer represent a real execution. This is a transition
+    # check (did the edit destroy process presence that existed?), not an
+    # absolute one, so it correctly leaves graphs that never modeled a
+    # process node (e.g. isolated resource-dependency test fixtures) alone.
+    original_has_process = any(data.get("entity_type") == "process" for _, data in G.nodes(data=True))
+    edited_has_process = any(data.get("entity_type") == "process" for _, data in G2.nodes(data=True))
+    if original_has_process and not edited_has_process:
+        return False
+
     resource_roots = set()
     for node, data in G.nodes(data=True):
         for resource in data.get("resources", []) or []:

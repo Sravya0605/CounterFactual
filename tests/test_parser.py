@@ -79,6 +79,15 @@ class ParserGraphTest(unittest.TestCase):
         candidate = {"delete_nodes": ["consumer"], "substitute": {}}
         self.assertTrue(validate_candidate(G, candidate))
 
+    def test_validate_candidate_rejects_full_process_deletion(self):
+        G = nx.DiGraph()
+        G.add_node("proc:1000", api="process", entity_type="process")
+        G.add_node("n0", api="CreateFile", resources=["C:\\temp\\foo.txt"], entity_type="file")
+        G.add_edge("proc:1000", "n0", type="process")
+
+        candidate = {"delete_nodes": ["proc:1000"], "substitute": {}}
+        self.assertFalse(validate_candidate(G, candidate))
+
     def test_heuristic_classifier_can_cross_threshold(self):
         classifier = HeuristicClassifier()
         G = nx.DiGraph()
