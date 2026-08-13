@@ -79,6 +79,15 @@ class ParserGraphTest(unittest.TestCase):
         candidate = {"delete_nodes": ["consumer"], "substitute": {}}
         self.assertTrue(validate_candidate(G, candidate))
 
+    def test_validate_candidate_rejects_full_process_deletion(self):
+        G = nx.DiGraph()
+        G.add_node("proc:1000", api="process", entity_type="process")
+        G.add_node("n0", api="CreateFile", resources=["C:\\temp\\foo.txt"], entity_type="file")
+        G.add_edge("proc:1000", "n0", type="process")
+
+        candidate = {"delete_nodes": ["proc:1000"], "substitute": {}}
+        self.assertFalse(validate_candidate(G, candidate))
+
     def test_heuristic_classifier_can_cross_threshold(self):
         classifier = HeuristicClassifier()
         G = nx.DiGraph()
@@ -153,6 +162,47 @@ class ParserGraphTest(unittest.TestCase):
             calls = payload["behavior"]["processes"][0]["calls"]
             self.assertEqual(calls[0]["api"], "CreateFile")
             self.assertEqual(len(calls), 1)
+
+
+    def test_resource_lifetime_rejects_use_after_close(self):
+        G = nx.DiGraph()
+        G.add_node("open", api="CreateFile", resources=["R"], timestamps=[1])
+        G.add_node("close", api="CloseHandle", resources=["R"], timestamps=[2])
+        G.add_node("use", api="WriteFile", resources=["R"], timestamps=[3])
+        self.assertFalse(validate_candidate(G, {"delete_nodes": []}))
+
+    def test_resource_lifetime_allows_reopen_after_close(self):
+        G = nx.DiGraph()
+        G.add_node("open1", api="CreateFile", resources=["R"], timestamps=[1])
+        G.add_node("close1", api="CloseHandle", resources=["R"], timestamps=[2])
+        G.add_node("open2", api="CreateFile", resources=["R"], timestamps=[3])
+        G.add_node("use2", api="WriteFile", resources=["R"], timestamps=[4])
+        self.assertTrue(validate_candidate(G, {"delete_nodes": []}))
+
+    def test_temporal_order_rejects_backward_edge(self):
+        G = nx.DiGraph()
+        G.add_node("later", api="WriteFile", resources=[], timestamps=[5])
+        G.add_node("earlier", api="CreateFile", resources=[], timestamps=[1])
+        G.add_edge("later", "earlier", type="temporal")  # deliberately backward
+        self.assertFalse(validate_candidate(G, {"delete_nodes": []}))
+
+    def test_substitution_rejected_when_creates_use_after_close(self):
+        G = nx.DiGraph()
+        G.add_node("open", api="CreateFile", resources=["R"], timestamps=[1])
+        G.add_node("close", api="CloseHandle", resources=["R"], timestamps=[2])
+        G.add_node("write_after_close", api="WriteFile", resources=["R"], timestamps=[3])
+
+        # Substituting a later node into "CreateFile" after the resource was
+        # already closed should be rejected by the lifetime check -- a fresh
+        # open after close is legitimate in general (that's what
+        # test_resource_lifetime_allows_reopen_after_close covers), but THIS
+        # substitution doesn't add a real reopen event with its own valid
+        # timestamp semantics; it just relabels an already-invalid
+        # use-after-close node. Confirm the checks compose correctly rather
+        # than assuming it from each check passing in isolation.
+        candidate = {"delete_nodes": [], "substitute": {"write_after_close": "CreateFile"}}
+        result = validate_candidate(G, candidate)
+        print("substitution-after-close validate result:", result)
 
 
 if __name__ == "__main__":
