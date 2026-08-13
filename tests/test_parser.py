@@ -235,5 +235,28 @@ class ParserGraphTest(unittest.TestCase):
                 f"node {node} unexpectedly has entity_type='resource' with no lifetime data supplied"
             )
 
+    def test_extract_acquisition_rejects_failed_call_even_with_nonzero_handle(self):
+        from src.behavior.resources import extract_acquisition
+        # A failed call that, unlike this trace's real examples, returns a
+        # plausible-looking nonzero handle -- the zero-handle check alone
+        # would NOT catch this; only the status check does.
+        event = {
+            "api": "NtOpenFile", "process_id": 1, "sequence": 1, "timestamp": "t1",
+            "status": False,
+            "args": [{"name": "FileHandle", "value": "0x0000AAAA"}],
+        }
+        self.assertIsNone(extract_acquisition(event))
+
+    def test_extract_acquisition_accepts_successful_call(self):
+        from src.behavior.resources import extract_acquisition
+        event = {
+            "api": "NtOpenFile", "process_id": 1, "sequence": 1, "timestamp": "t1",
+            "status": True,
+            "args": [{"name": "FileHandle", "value": "0x0000AAAA"}],
+        }
+        result = extract_acquisition(event)
+        self.assertIsNotNone(result)
+        self.assertEqual(result["handle"], "0x0000AAAA")
+
 if __name__ == "__main__":
     unittest.main()

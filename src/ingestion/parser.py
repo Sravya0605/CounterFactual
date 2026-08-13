@@ -189,6 +189,7 @@ def parse_cape_json(path: str) -> List[Dict[str, Any]]:
                 "process_id": proc_id,
                 "timestamp": timestamp,
                 "sequence": call_idx,
+                "status": call.get("status"),
                 "args": args,
                 "event_type": metadata["event_type"],
                 "resources": metadata["resources"],
