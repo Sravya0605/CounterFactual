@@ -41,6 +41,72 @@ def candidate_cost(candidate: Dict) -> int:
     return delete_nodes + delete_edges + substitutions
 
 
+OPENING_API_TOKENS = {"createfile", "createprocess", "regcreatekey", "socket", "createservice"}
+CLOSING_API_TOKENS = {"closehandle", "deletefile", "regdeletekey", "regdeletevalue", "terminateprocess", "closesocket"}
+
+
+def _matches_any(api: str, tokens: set) -> bool:
+    normalized = str(api or "").lower()
+    return any(token in normalized for token in tokens)
+
+
+def _node_timestamp(data: Dict) -> float:
+    values = [t for t in (data.get("timestamps") or []) if t is not None]
+    return float(min(values)) if values else 0.0
+
+
+def _check_resource_lifetime(G2: nx.DiGraph) -> bool:
+    """Reject graphs where a resource is used after being closed/freed,
+    without an intervening re-open. Modeled as a per-resource open/close
+    state machine over timestamp-ordered events, not a single permanent
+    close -- resources are legitimately opened, closed, and reopened
+    within one trace (e.g. the same file path handled across two separate
+    handles), and a naive "no use after the first close" rule would
+    reject that common, entirely valid pattern.
+    """
+    events_by_resource: Dict[str, list] = {}
+    for _, data in G2.nodes(data=True):
+        api = data.get("api")
+        ts = _node_timestamp(data)
+        for resource in data.get("resources", []) or []:
+            events_by_resource.setdefault(resource, []).append((ts, api))
+
+    for resource, events in events_by_resource.items():
+        events.sort(key=lambda pair: pair[0])
+        is_open = True  # implicitly open until we see a close, absent evidence otherwise
+        for ts, api in events:
+            if _matches_any(api, OPENING_API_TOKENS):
+                is_open = True
+            elif _matches_any(api, CLOSING_API_TOKENS):
+                is_open = False
+            else:
+                if not is_open:
+                    return False
+    return True
+
+
+def _check_temporal_order(G2: nx.DiGraph) -> bool:
+    """Reject graphs where a temporal edge points backward in time.
+
+    Honest caveat: with the CURRENT edit vocabulary (node/edge deletion,
+    API substitution) this check is effectively vacuous today -- no
+    existing candidate operation reorders events or changes timestamps,
+    so nothing can violate it yet. It's added now, with its own test that
+    constructs a violation by hand, for two reasons: (1) it's part of the
+    feasibility constraint as formally claimed in the survey/design doc,
+    so the paper's methodology section should be true when it says this
+    is enforced; (2) it starts enforcing automatically the moment the
+    proposer gains any reordering or insertion move, without anyone
+    having to remember to add it later.
+    """
+    for u, v, edge_data in G2.edges(data=True):
+        if edge_data.get("type") != "temporal":
+            continue
+        if _node_timestamp(G2.nodes[u]) > _node_timestamp(G2.nodes[v]):
+            return False
+    return True
+
+
 def validate_candidate(G: nx.DiGraph, candidate: Dict) -> bool:
     """Validate candidate edits against dependency closure and substitution rules."""
     delete_nodes = set(candidate.get("delete_nodes", []))
@@ -61,6 +127,12 @@ def validate_candidate(G: nx.DiGraph, candidate: Dict) -> bool:
     original_has_process = any(data.get("entity_type") == "process" for _, data in G.nodes(data=True))
     edited_has_process = any(data.get("entity_type") == "process" for _, data in G2.nodes(data=True))
     if original_has_process and not edited_has_process:
+        return False
+
+    if not _check_resource_lifetime(G2):
+        return False
+
+    if not _check_temporal_order(G2):
         return False
 
     resource_roots = set()

@@ -164,5 +164,28 @@ class ParserGraphTest(unittest.TestCase):
             self.assertEqual(len(calls), 1)
 
 
+    def test_resource_lifetime_rejects_use_after_close(self):
+        G = nx.DiGraph()
+        G.add_node("open", api="CreateFile", resources=["R"], timestamps=[1])
+        G.add_node("close", api="CloseHandle", resources=["R"], timestamps=[2])
+        G.add_node("use", api="WriteFile", resources=["R"], timestamps=[3])
+        self.assertFalse(validate_candidate(G, {"delete_nodes": []}))
+
+    def test_resource_lifetime_allows_reopen_after_close(self):
+        G = nx.DiGraph()
+        G.add_node("open1", api="CreateFile", resources=["R"], timestamps=[1])
+        G.add_node("close1", api="CloseHandle", resources=["R"], timestamps=[2])
+        G.add_node("open2", api="CreateFile", resources=["R"], timestamps=[3])
+        G.add_node("use2", api="WriteFile", resources=["R"], timestamps=[4])
+        self.assertTrue(validate_candidate(G, {"delete_nodes": []}))
+
+    def test_temporal_order_rejects_backward_edge(self):
+        G = nx.DiGraph()
+        G.add_node("later", api="WriteFile", resources=[], timestamps=[5])
+        G.add_node("earlier", api="CreateFile", resources=[], timestamps=[1])
+        G.add_edge("later", "earlier", type="temporal")  # deliberately backward
+        self.assertFalse(validate_candidate(G, {"delete_nodes": []}))
+
+
 if __name__ == "__main__":
     unittest.main()
