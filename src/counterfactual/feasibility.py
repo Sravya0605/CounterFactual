@@ -53,30 +53,11 @@ def _matches_any(api: str, tokens: set) -> bool:
 
 def _node_timestamp(data: Dict) -> float:
     """Return the earliest node timestamp as a comparable float."""
-    values = [t for t in (data.get("timestamps") or []) if t is not None]
+    from src.utils.timestamps import normalize_timestamp
 
+    values = [t for t in (data.get("timestamps") or []) if t is not None]
     if not values:
         return 0.0
-
-    def normalize_timestamp(value):
-        if isinstance(value, (int, float)):
-            return float(value)
-
-        if isinstance(value, str):
-            value = value.strip()
-
-            for fmt in (
-                "%Y-%m-%d %H:%M:%S,%f",
-                "%Y-%m-%d %H:%M:%S.%f",
-                "%Y-%m-%d %H:%M:%S",
-            ):
-                try:
-                    return datetime.strptime(value, fmt).timestamp()
-                except ValueError:
-                    pass
-
-        raise ValueError(f"Unsupported timestamp format: {value!r}")
-
     return min(normalize_timestamp(t) for t in values)
 
 

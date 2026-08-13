@@ -2,12 +2,28 @@
 import math
 from collections import Counter
 from typing import Any, List
+from datetime import datetime
 
 import pandas as pd
 
 
 def _node_api_sequence(G) -> List[str]:
-    nodes = sorted(G.nodes(), key=lambda nid: (G.nodes[nid].get("timestamps") or [0])[0])
+    from src.utils.timestamps import normalize_timestamp
+
+    def timestamp_key(nid):
+        timestamps = G.nodes[nid].get("timestamps") or []
+        if not timestamps:
+            return float("inf")
+        try:
+            return normalize_timestamp(timestamps[0])
+        except ValueError:
+            # Explicit, visible fallback -- an unparseable timestamp sorts
+            # this node last rather than crashing feature extraction, but
+            # unlike the old version this is a deliberate, named decision
+            # at one call site, not a silently duplicated implementation.
+            return float("inf")
+
+    nodes = sorted(G.nodes(), key=timestamp_key)
     return [str(G.nodes[nid].get("api") or "unknown") for nid in nodes]
 
 

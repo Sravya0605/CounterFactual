@@ -47,34 +47,11 @@ def _coalesce_events(events: List[Dict]) -> Tuple[List[Dict], Dict[str, str]]:
 
 
 def _first_timestamp(node: Dict) -> float:
-    values = [t for t in node.get("timestamps", []) if t is not None]
+    from src.utils.timestamps import normalize_timestamp
 
+    values = [t for t in node.get("timestamps", []) if t is not None]
     if not values:
         return 0.0
-
-    def normalize_timestamp(value: Any) -> float:
-        if isinstance(value, (int, float)):
-            return float(value)
-
-        if isinstance(value, str):
-            value = value.strip()
-
-            # CAPE timestamp format:
-            # 2025-09-10 19:13:50,303
-            for fmt in (
-                "%Y-%m-%d %H:%M:%S,%f",
-                "%Y-%m-%d %H:%M:%S.%f",
-                "%Y-%m-%d %H:%M:%S",
-            ):
-                try:
-                    return datetime.strptime(value, fmt).timestamp()
-                except ValueError:
-                    pass
-
-        raise ValueError(
-            f"Unsupported timestamp format: {value!r}"
-        )
-
     return min(normalize_timestamp(t) for t in values)
 
 
