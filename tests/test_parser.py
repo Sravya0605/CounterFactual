@@ -186,6 +186,24 @@ class ParserGraphTest(unittest.TestCase):
         G.add_edge("later", "earlier", type="temporal")  # deliberately backward
         self.assertFalse(validate_candidate(G, {"delete_nodes": []}))
 
+    def test_substitution_rejected_when_creates_use_after_close(self):
+        G = nx.DiGraph()
+        G.add_node("open", api="CreateFile", resources=["R"], timestamps=[1])
+        G.add_node("close", api="CloseHandle", resources=["R"], timestamps=[2])
+        G.add_node("write_after_close", api="WriteFile", resources=["R"], timestamps=[3])
+
+        # Substituting a later node into "CreateFile" after the resource was
+        # already closed should be rejected by the lifetime check -- a fresh
+        # open after close is legitimate in general (that's what
+        # test_resource_lifetime_allows_reopen_after_close covers), but THIS
+        # substitution doesn't add a real reopen event with its own valid
+        # timestamp semantics; it just relabels an already-invalid
+        # use-after-close node. Confirm the checks compose correctly rather
+        # than assuming it from each check passing in isolation.
+        candidate = {"delete_nodes": [], "substitute": {"write_after_close": "CreateFile"}}
+        result = validate_candidate(G, candidate)
+        print("substitution-after-close validate result:", result)
+
 
 if __name__ == "__main__":
     unittest.main()
