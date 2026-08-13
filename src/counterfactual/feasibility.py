@@ -1,5 +1,6 @@
 """Tier-1 feasibility checker for structural validity."""
 from typing import Dict
+from datetime import datetime
 
 import networkx as nx
 
@@ -51,8 +52,32 @@ def _matches_any(api: str, tokens: set) -> bool:
 
 
 def _node_timestamp(data: Dict) -> float:
+    """Return the earliest node timestamp as a comparable float."""
     values = [t for t in (data.get("timestamps") or []) if t is not None]
-    return float(min(values)) if values else 0.0
+
+    if not values:
+        return 0.0
+
+    def normalize_timestamp(value):
+        if isinstance(value, (int, float)):
+            return float(value)
+
+        if isinstance(value, str):
+            value = value.strip()
+
+            for fmt in (
+                "%Y-%m-%d %H:%M:%S,%f",
+                "%Y-%m-%d %H:%M:%S.%f",
+                "%Y-%m-%d %H:%M:%S",
+            ):
+                try:
+                    return datetime.strptime(value, fmt).timestamp()
+                except ValueError:
+                    pass
+
+        raise ValueError(f"Unsupported timestamp format: {value!r}")
+
+    return min(normalize_timestamp(t) for t in values)
 
 
 def _check_resource_lifetime(G2: nx.DiGraph) -> bool:
@@ -177,11 +202,24 @@ def validate_candidate(G: nx.DiGraph, candidate: Dict) -> bool:
         for node, data in G2.nodes(data=True):
             if data.get("entity_type") == "process":
                 continue
-            has_process_parent = any(
-                G2.nodes[predecessor].get("entity_type") == "process"
-                for predecessor in G2.predecessors(node)
-            )
-            if not has_process_parent:
+            # Walk backward through predecessors (not just immediate ones) to
+            # find a process ancestor. Immediate-predecessor-only checking
+            # breaks for any node reachable from a process only through
+            # intermediate nodes -- e.g. a resource-lifetime node whose only
+            # predecessor is an API-call event, not the process itself.
+            visited = set()
+            stack = list(G2.predecessors(node))
+            has_process_ancestor = False
+            while stack:
+                current = stack.pop()
+                if current in visited:
+                    continue
+                visited.add(current)
+                if G2.nodes[current].get("entity_type") == "process":
+                    has_process_ancestor = True
+                    break
+                stack.extend(G2.predecessors(current))
+            if not has_process_ancestor:
                 return False
 
     return True

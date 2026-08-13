@@ -8,7 +8,48 @@ import hashlib
 import json
 from typing import Any, Dict, List, Optional
 
-RESOURCE_KEYS = ("file", "filename", "path", "regkey", "registry_key", "ip", "domain", "url")
+RESOURCE_KEYS = (
+    "file",
+    "filename",
+    "path",
+    "regkey",
+    "registry_key",
+    "ip",
+    "domain",
+    "url",
+)
+
+RESOURCE_ARGUMENTS = {
+    "FileName": {
+        "DeleteFileA",
+        "FindFirstFileExW",
+        "LdrGetDllHandle",
+        "NtCreateFile",
+        "NtCreateSection",
+        "NtOpenFile",
+        "NtQueryAttributesFile",
+        "NtQueryDirectoryFile",
+        "NtQueryFullAttributesFile",
+    },
+
+    "ObjectAttributesName": {
+        "NtOpenKey",
+        "NtOpenKeyEx",
+    },
+
+    "MappedPath": {
+        "LdrpCallInitRoutine",
+    },
+
+    "DosFileName": {
+        "RtlDosPathNameToNtPathName_U",
+    },
+
+    "SubKey": {
+        "RegOpenKeyExA",
+        "RegOpenKeyExW",
+    },
+}
 ATTACK_HINTS = {
     "createfile": "T1105",
     "writefile": "T1027",
@@ -41,14 +82,18 @@ def _looks_like_resource_key(key: str) -> bool:
         return True
     return any(key_low.startswith(candidate) or key_low.endswith(candidate) for candidate in RESOURCE_KEYS)
 
-
-def _classify_event(api: str, args: Dict[str, Any]) -> Dict[str, Any]:
+def _classify_event(api: str, args: Any) -> Dict[str, Any]:
     normalized_api = (api or "unknown").lower()
+
     if "process" in normalized_api or "thread" in normalized_api:
         event_type = "process"
     elif "task" in normalized_api or "service" in normalized_api:
         event_type = "persistence"
-    elif "socket" in normalized_api or "connect" in normalized_api or "dns" in normalized_api:
+    elif (
+        "socket" in normalized_api
+        or "connect" in normalized_api
+        or "dns" in normalized_api
+    ):
         event_type = "network"
     elif "reg" in normalized_api or "registry" in normalized_api:
         event_type = "registry"
@@ -58,19 +103,56 @@ def _classify_event(api: str, args: Dict[str, Any]) -> Dict[str, Any]:
         event_type = "system"
 
     resources = []
-    if isinstance(args, dict):
+
+    # Real CAPE format:
+    # [
+    #     {"name": "FileName", "value": "..."},
+    #     {"name": "FileHandle", "value": "..."},
+    # ]
+    if isinstance(args, list):
+        for entry in args:
+            if not isinstance(entry, dict):
+                continue
+
+            name = entry.get("name")
+            value = entry.get("value")
+
+            if not name or value is None:
+                continue
+
+            allowed_apis = RESOURCE_ARGUMENTS.get(name)
+
+            if allowed_apis and api in allowed_apis:
+                resource = _normalize_resource(value)
+
+                if resource is not None and resource not in resources:
+                    resources.append(resource)
+
+    # Synthetic/test format:
+    # {
+    #     "filename": "...",
+    #     "path": "..."
+    # }
+    elif isinstance(args, dict):
         for key, value in args.items():
             if _looks_like_resource_key(key):
                 resource = _normalize_resource(value)
-                if resource is not None:
+
+                if resource is not None and resource not in resources:
                     resources.append(resource)
+
     attack_id = None
+
     for token, hint in ATTACK_HINTS.items():
         if token in normalized_api:
             attack_id = hint
             break
-    return {"event_type": event_type, "resources": resources, "attack_id": attack_id}
 
+    return {
+        "event_type": event_type,
+        "resources": resources,
+        "attack_id": attack_id,
+    }
 
 def parse_cape_json(path: str) -> List[Dict[str, Any]]:
     """Parse a CAPE JSON report and return normalized events.
@@ -96,7 +178,7 @@ def parse_cape_json(path: str) -> List[Dict[str, Any]]:
     for idx, proc in enumerate(processes):
         proc_id = proc.get("pid") or proc.get("process_id") or proc.get("name") or f"proc:{idx}"
         calls = proc.get("calls") or []
-        for call in calls:
+        for call_idx, call in enumerate(calls):
             api = call.get("api") or call.get("name") or "unknown"
             timestamp = call.get("timestamp") or call.get("time") or proc.get("timestamp")
             args = call.get("arguments") or call.get("args") or {}
@@ -106,6 +188,7 @@ def parse_cape_json(path: str) -> List[Dict[str, Any]]:
                 "api": api,
                 "process_id": proc_id,
                 "timestamp": timestamp,
+                "sequence": call_idx,
                 "args": args,
                 "event_type": metadata["event_type"],
                 "resources": metadata["resources"],
@@ -125,6 +208,7 @@ def parse_cape_json(path: str) -> List[Dict[str, Any]]:
                 "api": api,
                 "process_id": f"root:{idx}",
                 "timestamp": timestamp,
+                "sequence": idx,
                 "args": args,
                 "event_type": metadata["event_type"],
                 "resources": metadata["resources"],

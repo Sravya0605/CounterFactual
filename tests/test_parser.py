@@ -204,6 +204,36 @@ class ParserGraphTest(unittest.TestCase):
         result = validate_candidate(G, candidate)
         print("substitution-after-close validate result:", result)
 
+    def test_classify_event_extracts_resource_from_cape_arg_list(self):
+        from src.ingestion.parser import _classify_event
+        args = [
+            {"name": "FileHandle", "value": "0x0000022c"},
+            {"name": "DesiredAccess", "value": "0x00100021"},
+            {"name": "FileName", "value": "C:\\Windows\\System32\\uxtheme.dll"},
+        ]
+        result = _classify_event("NtOpenFile", args)
+        self.assertIn("C:\\Windows\\System32\\uxtheme.dll", result["resources"])
+
+    def test_looks_like_resource_key_matches_compound_names(self):
+        from src.ingestion.parser import _looks_like_resource_key
+        for key in ("file_path", "target_filename", "source_path", "dest_ip", "DomainName", "TargetPath"):
+            self.assertTrue(_looks_like_resource_key(key), f"expected {key!r} to match")
+
+
+    def test_entity_type_resource_reserved_for_lifetime_nodes_only(self):
+        from src.ingestion.parser import parse_cape_json
+        from src.graph.graph_builder import build_behavior_graph
+        events = parse_cape_json(self.sample)
+        G = build_behavior_graph(events)
+        # With no lifetimes/active_resources passed in, nothing should be
+        # labeled entity_type="resource" -- that label is now reserved for
+        # reconstructed resource-lifetime objects, not the uncategorized-event
+        # fallback.
+        for node, data in G.nodes(data=True):
+            self.assertNotEqual(
+                data.get("entity_type"), "resource",
+                f"node {node} unexpectedly has entity_type='resource' with no lifetime data supplied"
+            )
 
 if __name__ == "__main__":
     unittest.main()
