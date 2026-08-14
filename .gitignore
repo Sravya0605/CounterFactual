@@ -3,3 +3,7 @@ __pycache__/
 *.pyo
 .venv/
 /data/
+
+models/*.pkl
+
+malware_families.csv
