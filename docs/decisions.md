@@ -88,3 +88,57 @@ classifier as ground truth for counterfactual search; treat any
 counterfactual explanation from this model with the explicit caveat
 that it may be explaining an API-fingerprint shortcut, not malware
 behavior, until this is revisited on a larger corpus.
+
+
+
+============================================================================
+
+
+## 2026-08-14 — First real end-to-end counterfactual flip, on real data
+
+Trained a deliberately simplified binary LightGBM (emotet vs. not,
+num_leaves=4, max_depth=2, 15 rounds) on 72 held-out-split real
+training samples, and ran CounterfactualSearch against an unseen
+test sample (P(emotet)=0.6725, true label emotet). Result:
+
+  status: completed
+  candidate: delete_nodes ['n0', 'n164']
+  P(emotet): 0.6725 -> 0.4987 (crosses 0.5 threshold)
+
+This is the first time in the project the full pipeline (real CAPE
+data -> graph -> feasibility-constrained search -> real trained
+classifier) has produced a genuine flip end to end.
+
+Inspected the two deleted nodes:
+- n164 = CryptEncrypt. This IS the meaningful finding -- cryptencrypt
+  was independently identified as the single strongest emotet
+  discriminator in the earlier shortcut-learning analysis (100% present
+  in emotet, 10%/0% in agenttesla/qbot). The search correctly located
+  and removed the model's actual decision-driving evidence.
+- n0 = HeapCreate. Behaviorally meaningless (near-universal bookkeeping
+  API, not a real discriminator). Verified by testing n164 alone:
+  produces the IDENTICAL flip (P=0.4987), while n0 alone does
+  essentially nothing (P=0.6725, unchanged). This means the search's
+  "minimal" 2-node answer is NOT actually minimal -- a true 1-node edit
+  exists and the search didn't find it.
+
+Root cause (not yet fixed): the enumerative candidate proposer tries
+cheap single-node deletions in graph node order, not in an order that
+prefers subsequently-discovered-cheaper candidates once a flip is
+already found; n0 apparently got bundled in via a cascade/multi-node
+path before n164-alone was tried alone in isolation. Needs
+investigation in search.py's candidate generation before minimality
+numbers can be trusted for any evaluation table.
+
+Also note: this required deliberately handicapping the classifier
+(num_leaves=4, max_depth=2) to get a non-saturated probability at all
+-- the "real" LightGBM models trained earlier (99 trees, no depth
+limit) produced ONLY 0.0000/1.0000 across all 90 samples, in-sample
+AND held-out, because a handful of coarse features separate classes
+so cleanly that the sigmoid saturates. This is consistent with, and
+strengthens, the shortcut-learning finding: the model isn't learning
+a smooth decision surface, it's making a near-binary lookup on 2-3
+features. Any future counterfactual evaluation needs either (a) a
+calibrated/regularized classifier, or (b) to report probability
+saturation rate as its own metric, since "no_flip_found" against a
+saturated model is not evidence the method doesn't work.
