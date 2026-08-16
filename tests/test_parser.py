@@ -258,5 +258,40 @@ class ParserGraphTest(unittest.TestCase):
         self.assertIsNotNone(result)
         self.assertEqual(result["handle"], "0x0000AAAA")
 
+    def test_propose_generates_single_node_candidates_for_full_graph_not_just_early_nodes(self):
+        import networkx as nx
+        from src.counterfactual.search import CounterfactualSearch
+
+        # Build a graph much larger than max_candidates (200), each node with
+        # a long downstream chain -- old ordering would starve the budget on
+        # node 0's cascade before ever proposing later nodes alone.
+        G = nx.DiGraph()
+        G.add_node("proc:1", api="process", entity_type="process")
+        prev = "proc:1"
+        for i in range(300):
+            node_id = f"n{i}"
+            G.add_node(node_id, api="ReadFile", entity_type="file", resources=[])
+            G.add_edge(prev, node_id, type="process")
+            prev = node_id
+
+        search = CounterfactualSearch(classifier=None, graph=G)
+        candidates = search.propose()
+
+        single_node_targets = {
+            c["delete_nodes"][0]
+            for c in candidates
+            if len(c.get("delete_nodes", [])) == 1
+        }
+        # With random sampling (seed=42), single-node coverage should span
+        # much more of the graph than the old sequential-order bug allowed
+        # (which was hard-limited to roughly the first ~200 nodes every time).
+        max_index_seen = max(
+            int(n[1:]) for n in single_node_targets if n.startswith("n") and n[1:].isdigit()
+        )
+        self.assertGreater(
+            max_index_seen, 250,
+            "single-node candidates should reach well past node 250 with random sampling"
+        )
+    
 if __name__ == "__main__":
     unittest.main()
