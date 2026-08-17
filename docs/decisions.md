@@ -261,3 +261,56 @@ Known open issues, not yet fixed:
   needs systematic investigation (does this hold across multiple
   random splits, or was the earlier successful flip itself the
   outlier?) before drawing conclusions either way.
+
+
+
+
+===================================================================================
+
+
+## 2026-08-17 — 5-seed stability check: feasibility rate 0.00% across all seeds
+
+Ran the full held-out evaluation across 5 independent random seeds
+(0-4) on the same emotet-vs-agenttesla, 60MB-size-filtered subset used
+in the earlier same-day evaluation. Result: feasibility_rate_min=0.00%,
+feasibility_rate_max=0.00%, feasibility_rate_mean=0.00%, 0 completed
+flips out of 44 total held-out samples evaluated across all 5 seeds
+combined.
+
+This resolves the open question from the earlier same-day entry: the
+single successful flip found this morning (P: 0.6725 -> 0.4987) was
+the outlier, not representative. Five independent train/test splits,
+each retraining the same deliberately-regularized LightGBM config
+(num_leaves=4, max_depth=2, 15 rounds), consistently found zero
+feasible flips.
+
+Likely root cause: all 5 seeds' training runs show a near-identical
+positive-class base rate (pavg range 0.629-0.694) and the same
+"[Warning] No further splits with positive gain" pattern repeating
+dozens of times per run -- consistent with this morning's direct
+observation that this model configuration collapses to only 2-3
+distinct output probability values regardless of input graph. Whether
+any given sample's output happens to land close enough to the 0.5
+threshold for the search to cross it within budget appears to be
+essentially chance, not a stable property of the method.
+
+CONCLUSION: this specific classifier configuration (artificially
+shallow, chosen to get non-saturated probabilities out of an otherwise-
+saturated LightGBM) is too coarse and seed-sensitive to support
+reliable counterfactual evaluation. This is a classifier-quality
+problem, not a search-engine problem -- the search+feasibility
+machinery itself has been separately verified correct (candidate-
+starvation fix, minimality check on 1-2 op candidates, feasibility
+checker's full test suite). Before any feasibility-rate number is
+usable in a results table, the classifier needs either (a) more
+training data per family, (b) proper regularization/calibration
+instead of an artificial num_leaves=4 cap, or (c) both. This is now
+the top-priority open item for the project, ahead of scaling to more
+seeds/samples with the current classifier.
+
+Note: this evaluation script (scripts/holdout_evaluation.py) was
+substantially rewritten in this pass to add the 5-seed loop; the
+per-sample results table, the minimality_check function, and the
+unconstrained-baseline cost comparison were removed/simplified in the
+rewrite and are not currently present. Those need to be restored
+before the next evaluation pass, alongside the classifier fix above.
