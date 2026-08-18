@@ -314,3 +314,21 @@ per-sample results table, the minimality_check function, and the
 unconstrained-baseline cost comparison were removed/simplified in the
 rewrite and are not currently present. Those need to be restored
 before the next evaluation pass, alongside the classifier fix above.
+
+
+==============================================================================
+
+
+## 2026-08-18
+
+- **Killed: emotet-vs-rest binary framing.** Emotet samples cluster into only 6 distinct file sizes / 7 PE entrypoints out of 30 (shared loader templates across campaigns) — classifier trivially separates on 2 features (createthread, cryptencrypt) with 100% test accuracy and zero probability gradient. No meaningful decision boundary to search near; unusable for counterfactual generation.
+
+- **Adopted: agenttesla-vs-qbot binary framing (emotet excluded) as primary evaluation setup.** Unlike emotet, agenttesla shows real per-sample diversity (29/30 distinct file sizes) — produces a genuine decision boundary with a real misclassification (md5 `2f46ceec4c08f19c162c692b9cb5ce3a`, true qbot, predicted 0.9056 as agenttesla), reproduced identically across two independent runs (partial + full 90-sample dataset).
+
+- **Design fix: streaming feature-extraction pipeline (`scripts/train_full_dataset_classifier.py`), replacing full-graph-list-in-memory loading.** Old approach (`holdout_evaluation.py`'s `load_graphs()`) held all parsed graphs simultaneously, forcing a 60MB per-file cap that excluded 54/90 samples (all of qbot). New pipeline processes one CAPE report at a time, discarding the graph after extracting its feature vector — verified memory-bounded across all 90 files (144MB → 694.5MB RSS, including a 307.6MB report) with the cap removed entirely.
+
+- **Finding, not yet resolved: current candidate search (`propose()` — deletion, substitution, cascade) cannot explain misclassifications that require a feature value to *increase*.** For the one confirmed misclassification, the deciding feature (`createtoolhelp32snapshot`, single learned threshold ≤25 across all 46 LightGBM splits) sits at 16 in the sample but needs to exceed 25 — full 200-candidate search, constrained and unconstrained, found `no_flip_found`. Root cause: all current candidate types remove or rearrange existing graph events, none can add new ones. Scoped limitation of a deletion-only search design, not a feasibility-engine bug. Open decision for Member 3 (feasibility/search) and advisor: add an insertion-type candidate (raises its own feasibility questions — what makes a synthesized API call plausible?) or document as a known limitation of the method.
+
+- **Follow-up: ruled out data quality as the explanation for the above misclassification.** Sample's sandbox duration (269s) and process count (28) are mid-range for its family; malscore 10.0 with 14 independent QakBot YARA signature matches — genuinely and confidently labeled qbot, not corrupted or mislabeled. However, its `total_calls` (100,630) and process count are both the family minimum, making it the quietest qbot execution in the dataset by overall activity.
+
+- **Follow-up: ruled out "overall activity volume" as a general explanation for low `createtoolhelp32snapshot` counts.** Hypothesized the deciding feature might simply track total behavioral volume. Tested via correlation between `total_calls` and `createtoolhelp32snapshot` count within the qbot family alone (n=30, excluding agenttesla to avoid its near-zero variance in the target feature distorting the result): Pearson 0.25, Spearman 0.33 -- both weak. Counter-example: the qbot sample with the second-lowest `total_calls` has one of the highest `createtoolhelp32snapshot` counts (659) in the family. Conclusion: this sample's low count is not explained by a general low-activity mechanism -- it's specific to this execution, mechanism unknown. Not worth further investigation without a stronger lead.
