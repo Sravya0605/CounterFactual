@@ -34,6 +34,26 @@ def graph_to_api_counts(G) -> Counter:
         counts[api] += int(data.get("count", 1))
     return counts
 
+def graph_to_normalized_api_features(G) -> Counter:
+    """Return each API's share of total API call volume, instead of a raw
+    count. Raw counts let a single high-volume feature dominate a shallow
+    classifier's decisions regardless of what fraction of behavior it
+    actually represents (confirmed directly: 2026-08-18 findings --
+    createtoolhelp32snapshot's raw count became the sole decision feature
+    for an agenttesla-vs-qbot classifier, with no correctly-classified
+    sample anywhere near its learned threshold). Normalizing by total
+    volume gives the model a graded signal that isn't just "how active
+    was this sample overall."
+    """
+    raw_counts = graph_to_api_counts(G)
+    total = sum(raw_counts.values())
+    normalized: Counter = Counter()
+    if total == 0:
+        return normalized
+    for api, count in raw_counts.items():
+        normalized[f"ratio_{api}"] = round(count / total, 6)
+    return normalized
+
 
 def graph_to_ngram_features(G, n: int = 2) -> Counter:
     seq = _node_api_sequence(G)

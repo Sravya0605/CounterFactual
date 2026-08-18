@@ -390,3 +390,38 @@ before the next evaluation pass, alongside the classifier fix above.
   This is now the clear top-priority blocker, confirmed from both
   directions (correct and incorrect classifications) rather than
   assumed.
+
+- **Verified: normalized (ratio) features resolve the misclassification's
+  root cause.** Added `graph_to_normalized_api_features()` (API count /
+  total API call volume). For `createtoolhelp32snapshot`: agenttesla
+  ratio range is 0.000000-0.000007 (n=30), qbot range is 0.000159-0.006177
+  (n=30) -- a clean, non-overlapping gap with >20x margin. The
+  misclassified sample (2f46ceec4c08f19c162c692b9cb5ce3a, raw count 16,
+  anomalously low in absolute terms) sits at the qbot family's own
+  minimum ratio (0.000159), clearly above agenttesla's maximum. Its raw
+  count was an outlier in absolute terms but entirely normal as a share
+  of its own (low) total activity. This confirms feature engineering is
+  a real, verified fix for the raw-count-collapse mechanism diagnosed
+  earlier today -- next step: wire normalized features into the full
+  training pipeline and retrain, rather than assuming this one feature's
+  result generalizes without checking.
+
+  - **Finding: feature engineering alone does not fix the classifier --
+  confirmed the mechanism directly.** Wired `graph_to_normalized_api_features()`
+  (277 ratio features, including a hand-verified `ratio_createtoolhelp32snapshot`
+  with a clean >20x, zero-overlap separation between families) into the
+  full training pipeline and retrained on all 90 real samples. Result:
+  IDENTICAL output to the pre-normalization model -- same exact test
+  probabilities, same misclassified sample, byte-for-byte. Checked
+  directly: the ratio feature is present in the trained model's
+  vocabulary but has ZERO gain -- LightGBM never split on it. Root
+  cause: with only 48 training samples, the raw count feature already
+  achieves what looks like adequate separation during greedy tree
+  construction, so the algorithm has no incentive to ever consider a
+  second, correlated feature -- even one that (as hand-verified)
+  generalizes better. This means feature engineering cannot fix this
+  problem in isolation; the small training-sample count is what's
+  preventing the model from being forced to consider better features.
+  More training data per family is now confirmed necessary, not just
+  one of two options -- it's the blocking constraint feature engineering
+  alone cannot work around.

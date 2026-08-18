@@ -14,6 +14,7 @@ from src.utils.graph_features import (
     graph_to_ngram_features,
     graph_to_edge_features,
     graph_to_entropy_features,
+    graph_to_normalized_api_features,
 )
 from src.classifier.lgbm_model import train_lgbm, predict_proba as lgbm_predict_proba
 
@@ -57,6 +58,7 @@ def extract_feature_counter(G):
     features.update({f"ngram_{'_'.join(gram)}": v for gram, v in graph_to_ngram_features(G).items()})
     features.update(graph_to_edge_features(G))
     features.update(graph_to_entropy_features(G))
+    features.update(graph_to_normalized_api_features(G))
     return features
 
 
