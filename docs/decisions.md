@@ -332,3 +332,61 @@ before the next evaluation pass, alongside the classifier fix above.
 - **Follow-up: ruled out data quality as the explanation for the above misclassification.** Sample's sandbox duration (269s) and process count (28) are mid-range for its family; malscore 10.0 with 14 independent QakBot YARA signature matches — genuinely and confidently labeled qbot, not corrupted or mislabeled. However, its `total_calls` (100,630) and process count are both the family minimum, making it the quietest qbot execution in the dataset by overall activity.
 
 - **Follow-up: ruled out "overall activity volume" as a general explanation for low `createtoolhelp32snapshot` counts.** Hypothesized the deciding feature might simply track total behavioral volume. Tested via correlation between `total_calls` and `createtoolhelp32snapshot` count within the qbot family alone (n=30, excluding agenttesla to avoid its near-zero variance in the target feature distorting the result): Pearson 0.25, Spearman 0.33 -- both weak. Counter-example: the qbot sample with the second-lowest `total_calls` has one of the highest `createtoolhelp32snapshot` counts (659) in the family. Conclusion: this sample's low count is not explained by a general low-activity mechanism -- it's specific to this execution, mechanism unknown. Not worth further investigation without a stronger lead.
+
+
+==========================================================================================
+
+
+- **Design decision: deletion-only candidate space is documented as a
+  scoped limitation, not extended to insertion-type edits at this time.**
+  Building an insertion candidate would require a new feasibility
+  category the current engine doesn't have -- validate_candidate() and
+  its resource-lifetime/event-ordering checks are built to evaluate
+  edits to REAL, observed events; a synthesized event has no observed
+  handle, timestamp, or resource lineage to validate against, so
+  "is this plausible" becomes a fundamentally different, unsolved
+  question (what makes an invented API call plausible in a way that
+  isn't circular). This is real design work, not a quick addition, and
+  is deferred. The method's scope is explicitly: explaining
+  misclassifications/detections that are correctable by REMOVING or
+  SUBSTITUTING existing behavior, not ones requiring additional
+  behavior to be introduced. This will be stated plainly in the paper's
+  limitations section rather than presented as a general-purpose
+  counterfactual method.
+
+
+====================================================================================
+
+
+## 2026-08-18 (evening)
+
+- **Finding: correctly-classified agenttesla samples cannot be flipped
+  by this search under the current classifier -- confirmed structural,
+  not a search bug.** Checked all 7 correctly-classified agenttesla
+  samples in the held-out test set: every one has
+  createtoolhelp32snapshot=0 (the classifier's sole decision feature,
+  threshold <=25, all 46 splits agree). Since this is a deletion-only
+  search, and 0 is already the minimum possible count, no edit can move
+  any of these samples toward the qbot side of the boundary -- there is
+  no correctly-classified agenttesla sample anywhere near the decision
+  boundary in this dataset. One sample tested explicitly
+  (e46305d2488f5b2f21ec03cc0484d1c8): full 200-candidate constrained
+  search, no_flip_found, confirmed by direct feature inspection this
+  was structurally guaranteed, not a search failure.
+
+- **Conclusion: this is a classifier-quality problem, not a search
+  problem, and it's the same root cause logged in the prior session
+  (2026-08-16/17 entries) -- a small-sample, single-feature-dominant
+  classifier has no meaningful "near-boundary" cases in either
+  direction (neither the misclassified qbot sample nor any correct
+  agenttesla sample sits close to the threshold except by chance).
+  A deletion-only counterfactual search, however correctly implemented,
+  cannot produce meaningful results against a decision rule this coarse.
+  Before further counterfactual-search evaluation is worth running, the
+  classifier itself needs to be improved: more training samples per
+  family (current n=48 train is far too small relative to ~6000
+  features), and/or feature engineering that produces graded, non-count
+  features so the model isn't forced onto a single raw count threshold.
+  This is now the clear top-priority blocker, confirmed from both
+  directions (correct and incorrect classifications) rather than
+  assumed.
