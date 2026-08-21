@@ -96,6 +96,37 @@ class CounterfactualSearch:
         random_module.seed(42)
         sampled_nodes = random_module.sample(nodes, min(len(nodes), self.max_candidates * 3))
 
+        # Pass 3 (insertion candidates) runs FIRST, ahead of Pass 1/2 below.
+        # On any real graph with hundreds+ of nodes, Pass 1 alone fills the
+        # entire max_candidates budget with single-node deletions before
+        # Pass 2 or Pass 3 ever get a turn -- verified: on a 2216-node real
+        # sample, propose() returned exactly 200 candidates, 0 of them
+        # insertion-type, even when the sample was independently confirmed
+        # eligible for insertion. Insertion candidates are naturally few
+        # (bounded by distinct process count, typically far under 200), so
+        # giving them first claim on the budget doesn't meaningfully starve
+        # Pass 1's coverage, but NOT doing so starves insertions completely
+        # on every sufficiently large graph -- i.e. most real samples.
+        from src.counterfactual.feasibility import ANCHOR_FAMILY
+
+        processes_with_family_call = set()
+        for _, data in self.graph.nodes(data=True):
+            pid = data.get("process_id")
+            api = str(data.get("api") or "").lower()
+            if pid is not None and api in ANCHOR_FAMILY:
+                processes_with_family_call.add(pid)
+
+        for pid in processes_with_family_call:
+            if len(cands) >= self.max_candidates:
+                break
+            insert_candidate = {
+                "delete_nodes": [],
+                "substitute": {},
+                "insert_nodes": [{"api": "CreateToolhelp32Snapshot", "target_process_id": pid}],
+            }
+            if self._within_edit_budget(insert_candidate):
+                cands.append(insert_candidate)
+
         # Pass 1: single-node deletions for EVERY node, across the whole budget,
         # before any cascades or substitutions are considered. Without this pass
         # ordering, a single early node's downstream cascade can consume the
@@ -127,29 +158,6 @@ class CounterfactualSearch:
                 cascade_candidate = {"delete_nodes": [n, downstream], "substitute": {}}
                 if self._within_edit_budget(cascade_candidate):
                     cands.append(cascade_candidate)
-
-        # Pass 3: insertion candidates -- one per process that already shows
-        # at least one enumeration-family API call. Purely additive; Pass 1
-        # and Pass 2 above are untouched.
-        from src.counterfactual.feasibility import ANCHOR_FAMILY
-
-        processes_with_family_call = set()
-        for _, data in self.graph.nodes(data=True):
-            pid = data.get("process_id")
-            api = str(data.get("api") or "").lower()
-            if pid is not None and api in ANCHOR_FAMILY:
-                processes_with_family_call.add(pid)
-
-        for pid in processes_with_family_call:
-            if len(cands) >= self.max_candidates:
-                break
-            insert_candidate = {
-                "delete_nodes": [],
-                "substitute": {},
-                "insert_nodes": [{"api": "CreateToolhelp32Snapshot", "target_process_id": pid}],
-            }
-            if self._within_edit_budget(insert_candidate):
-                cands.append(insert_candidate)
 
         return cands
 

@@ -337,6 +337,33 @@ class ParserGraphTest(unittest.TestCase):
             "insert_nodes": [{"api": "CreateToolhelp32Snapshot", "target_process_id": 1}],
         }
         self.assertTrue(validate_candidate(G, candidate))
+
+    def test_insertion_candidates_not_starved_by_large_graph(self):
+        import networkx as nx
+        from src.counterfactual.search import CounterfactualSearch
+
+        # A graph large enough that Pass 1 alone would fill max_candidates
+        # (200) if insertions didn't get first claim on the budget.
+        G = nx.DiGraph()
+        G.add_node("proc:1", api="process", entity_type="process", process_id=1)
+        G.add_node("anchor", api="ReadProcessMemory", entity_type="file",
+                   process_id=1, resources=[], count=1, timestamps=[1], sequences=[1])
+        G.add_edge("proc:1", "anchor", type="process")
+        prev = "anchor"
+        for i in range(500):
+            node_id = f"n{i}"
+            G.add_node(node_id, api="ReadFile", entity_type="file",
+                       process_id=1, resources=[], count=1, timestamps=[i + 2], sequences=[i + 2])
+            G.add_edge(prev, node_id, type="temporal")
+            prev = node_id
+
+        search = CounterfactualSearch(classifier=None, graph=G)
+        candidates = search.propose()
+        insertion_candidates = [c for c in candidates if c.get("insert_nodes")]
+        self.assertGreater(
+            len(insertion_candidates), 0,
+            "insertion candidates should not be fully starved out on a large graph"
+        )
     
 if __name__ == "__main__":
     unittest.main()
