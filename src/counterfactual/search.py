@@ -117,15 +117,19 @@ class CounterfactualSearch:
                 processes_with_family_call.add(pid)
 
         for pid in processes_with_family_call:
-            if len(cands) >= self.max_candidates:
-                break
-            insert_candidate = {
-                "delete_nodes": [],
-                "substitute": {},
-                "insert_nodes": [{"api": "CreateToolhelp32Snapshot", "target_process_id": pid}],
-            }
-            if self._within_edit_budget(insert_candidate):
-                cands.append(insert_candidate)
+            for k in range(1, 6):
+                if len(cands) >= self.max_candidates:
+                    break
+                insert_candidate = {
+                    "delete_nodes": [],
+                    "substitute": {},
+                    "insert_nodes": [
+                        {"api": "CreateToolhelp32Snapshot", "target_process_id": pid}
+                        for _ in range(k)
+                    ],
+                }
+                if self._within_edit_budget(insert_candidate):
+                    cands.append(insert_candidate)
 
         # Pass 1: single-node deletions for EVERY node, across the whole budget,
         # before any cascades or substitutions are considered. Without this pass

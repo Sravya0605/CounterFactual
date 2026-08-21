@@ -364,6 +364,33 @@ class ParserGraphTest(unittest.TestCase):
             len(insertion_candidates), 0,
             "insertion candidates should not be fully starved out on a large graph"
         )
+
+    def test_multi_insertion_candidate_chains_correctly(self):
+        from src.counterfactual.feasibility import apply_candidate, validate_candidate
+
+        G = nx.DiGraph()
+        G.add_node("proc:1", api="process", entity_type="process", process_id=1)
+        G.add_node("n0", api="ReadProcessMemory", entity_type="file",
+                   process_id=1, resources=[], count=1, timestamps=[1], sequences=[1])
+        G.add_edge("proc:1", "n0", type="process")
+
+        candidate = {
+            "delete_nodes": [], "substitute": {},
+            "insert_nodes": [
+                {"api": "CreateToolhelp32Snapshot", "target_process_id": 1}
+                for _ in range(4)
+            ],
+        }
+        self.assertTrue(validate_candidate(G, candidate))
+
+        edited = apply_candidate(G, candidate)
+        inserted = [n for n, d in edited.nodes(data=True)
+                    if d.get("api") == "CreateToolhelp32Snapshot"]
+        self.assertEqual(len(inserted), 4)
+
+        # sequences should be strictly increasing across the chained inserts
+        seqs = sorted(edited.nodes[n]["sequences"][0] for n in inserted)
+        self.assertEqual(seqs, sorted(set(seqs)), "inserted sequence numbers must be distinct")
     
 if __name__ == "__main__":
     unittest.main()
