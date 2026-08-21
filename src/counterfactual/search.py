@@ -131,13 +131,13 @@ class CounterfactualSearch:
         # Pass 3: insertion candidates -- one per process that already shows
         # at least one enumeration-family API call. Purely additive; Pass 1
         # and Pass 2 above are untouched.
-        from src.counterfactual.feasibility import ENUMERATION_FAMILY
+        from src.counterfactual.feasibility import ANCHOR_FAMILY
 
         processes_with_family_call = set()
         for _, data in self.graph.nodes(data=True):
             pid = data.get("process_id")
             api = str(data.get("api") or "").lower()
-            if pid is not None and api in ENUMERATION_FAMILY:
+            if pid is not None and api in ANCHOR_FAMILY:
                 processes_with_family_call.add(pid)
 
         for pid in processes_with_family_call:

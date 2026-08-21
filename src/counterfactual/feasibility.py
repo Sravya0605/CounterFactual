@@ -72,20 +72,30 @@ def candidate_cost(candidate: Dict) -> int:
     insertions = len(candidate.get("insert_nodes", []) or [])
     return delete_nodes + delete_edges + substitutions + insertions
 
-ENUMERATION_FAMILY = {
+INSERTABLE_APIS = {"createtoolhelp32snapshot"}
+
+ANCHOR_FAMILY = {
     "createtoolhelp32snapshot", "process32first", "process32next",
-    "module32first", "module32next",
+    "module32first", "module32next", "getmodulehandlea", "getprocaddress",
+    "virtualqueryex", "readprocessmemory",
 }
 
 
 def _check_insertion_plausibility(G: nx.DiGraph, candidate: Dict) -> bool:
-    """An inserted API call is only plausible if the target process already
-    shows at least one other call from the same functional family somewhere
-    in its OWN observed timeline -- we're not claiming a process starts an
-    entirely new kind of behavior from nothing, only that it does one more
-    instance of something it's already shown it does. Checked against the
-    ORIGINAL graph G, not the edited one, since this is a claim about
-    pre-existing behavior.
+    """An inserted API call is only plausible if (a) it's one of the specific
+    APIs we allow inserting at all, and (b) the target process already shows
+    at least one call from the broader process/module-introspection anchor
+    family somewhere in its OWN observed timeline. The anchor family is
+    deliberately broader than INSERTABLE_APIS -- e.g. a process that already
+    calls ReadProcessMemory (the standard second step in process-injection
+    workflows, after enumeration) is treated as plausibly capable of also
+    having enumerated processes, even if CreateToolhelp32Snapshot itself
+    isn't already present. This is a judgment call about API semantic
+    relatedness, not a purely mechanical family match -- documented here
+    because it should be stated exactly this way in any writeup, not glossed
+    as a narrower "same API family" rule than it actually is in practice.
+    Checked against the ORIGINAL graph G, not the edited one, since this is
+    a claim about pre-existing behavior.
     """
     insert_nodes = candidate.get("insert_nodes", []) or []
     if not insert_nodes:
@@ -93,14 +103,14 @@ def _check_insertion_plausibility(G: nx.DiGraph, candidate: Dict) -> bool:
     for spec in insert_nodes:
         api = str(spec.get("api") or "").lower()
         process_id = spec.get("target_process_id")
-        if api not in ENUMERATION_FAMILY:
+        if api not in INSERTABLE_APIS:
             return False
-        has_family_call = any(
+        has_anchor_call = any(
             data.get("process_id") == process_id
-            and str(data.get("api") or "").lower() in ENUMERATION_FAMILY
+            and str(data.get("api") or "").lower() in ANCHOR_FAMILY
             for _, data in G.nodes(data=True)
         )
-        if not has_family_call:
+        if not has_anchor_call:
             return False
     return True
 
