@@ -19,7 +19,7 @@ from src.utils.graph_features import (
 from src.classifier.lgbm_model import train_lgbm, predict_proba as lgbm_predict_proba
 
 REPORTS_DIR = 'data/training_reports'
-CSV_PATH = 'data/training_batch.csv'
+CSV_PATH = os.environ.get('BATCH_CSV', 'data/training_batch.csv')
 MODEL_OUT_PATH = 'models/full_dataset_emotet_binary_lgbm.pkl'
 SPLIT_SEED = 0  # matches holdout_evaluation.py's first seed, for a fair comparison
 # Family framing for this run. Set via env var so the same script/pipeline

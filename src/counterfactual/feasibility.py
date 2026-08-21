@@ -31,6 +31,36 @@ def apply_candidate(G: nx.DiGraph, candidate: Dict) -> nx.DiGraph:
             from src.counterfactual.substitutions import update_resources_for_substitution
 
             G2.nodes[node]["resources"] = update_resources_for_substitution(api, original_resources)
+
+    insert_nodes = candidate.get("insert_nodes", []) or []
+    for spec in insert_nodes:
+        api = spec.get("api")
+        process_id = spec.get("target_process_id")
+        if api is None or process_id is None:
+            continue
+        proc_node_id = f"proc:{process_id}"
+        if proc_node_id not in G2:
+            continue
+        tail_node = _process_chain_tail(G2, process_id)
+        tail_data = G2.nodes[tail_node]
+        tail_ts = [t for t in (tail_data.get("timestamps") or []) if t is not None]
+        tail_seqs = [s for s in (tail_data.get("sequences") or []) if s is not None]
+        next_seq = (max(tail_seqs) + 1) if tail_seqs else 1
+
+        new_node_id = _next_insertion_id(G2)
+        G2.add_node(
+            new_node_id,
+            api=api,
+            entity_type="file",
+            process_id=process_id,
+            resources=[],
+            count=1,
+            timestamps=[tail_ts[0]] if tail_ts else [],
+            sequences=[next_seq],
+        )
+        G2.add_edge(proc_node_id, new_node_id, type="process")
+        G2.add_edge(tail_node, new_node_id, type="temporal")
+
     return G2
 
 
@@ -39,8 +69,67 @@ def candidate_cost(candidate: Dict) -> int:
     delete_nodes = len(set(candidate.get("delete_nodes", []) or []))
     delete_edges = len(candidate.get("delete_edges", []) or [])
     substitutions = len((candidate.get("substitute", {}) or {}).keys())
-    return delete_nodes + delete_edges + substitutions
+    insertions = len(candidate.get("insert_nodes", []) or [])
+    return delete_nodes + delete_edges + substitutions + insertions
 
+ENUMERATION_FAMILY = {
+    "createtoolhelp32snapshot", "process32first", "process32next",
+    "module32first", "module32next",
+}
+
+
+def _check_insertion_plausibility(G: nx.DiGraph, candidate: Dict) -> bool:
+    """An inserted API call is only plausible if the target process already
+    shows at least one other call from the same functional family somewhere
+    in its OWN observed timeline -- we're not claiming a process starts an
+    entirely new kind of behavior from nothing, only that it does one more
+    instance of something it's already shown it does. Checked against the
+    ORIGINAL graph G, not the edited one, since this is a claim about
+    pre-existing behavior.
+    """
+    insert_nodes = candidate.get("insert_nodes", []) or []
+    if not insert_nodes:
+        return True
+    for spec in insert_nodes:
+        api = str(spec.get("api") or "").lower()
+        process_id = spec.get("target_process_id")
+        if api not in ENUMERATION_FAMILY:
+            return False
+        has_family_call = any(
+            data.get("process_id") == process_id
+            and str(data.get("api") or "").lower() in ENUMERATION_FAMILY
+            for _, data in G.nodes(data=True)
+        )
+        if not has_family_call:
+            return False
+    return True
+
+
+def _next_insertion_id(G2: nx.DiGraph) -> str:
+    i = 0
+    while f"n_ins_{i}" in G2:
+        i += 1
+    return f"n_ins_{i}"
+
+
+def _process_chain_tail(G2: nx.DiGraph, process_id) -> str:
+    """Return the node with the max sequence number among this process's
+    event nodes in G2, or the process node itself if it has none yet. In
+    practice the latter never occurs for candidates that pass
+    _check_insertion_plausibility, since that check requires at least one
+    existing event on the target process already.
+    """
+    proc_node = f"proc:{process_id}"
+    ranked = []
+    for node, data in G2.nodes(data=True):
+        if data.get("process_id") == process_id and data.get("entity_type") != "process":
+            seqs = [s for s in (data.get("sequences") or []) if s is not None]
+            if seqs:
+                ranked.append((max(seqs), node))
+    if not ranked:
+        return proc_node
+    ranked.sort()
+    return ranked[-1][1]
 
 OPENING_API_TOKENS = {"createfile", "createprocess", "regcreatekey", "socket", "createservice"}
 CLOSING_API_TOKENS = {"closehandle", "deletefile", "regdeletekey", "regdeletevalue", "terminateprocess", "closesocket"}
@@ -122,6 +211,8 @@ def validate_candidate(G: nx.DiGraph, candidate: Dict) -> bool:
 
     meaningful = any((data.get("api") and data.get("api") != "unknown") for _, data in G2.nodes(data=True))
     if not meaningful:
+        return False
+    if not _check_insertion_plausibility(G, candidate):
         return False
 
     # If the original trace had at least one process node, the edit must not

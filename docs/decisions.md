@@ -425,3 +425,108 @@ before the next evaluation pass, alongside the classifier fix above.
   More training data per family is now confirmed necessary, not just
   one of two options -- it's the blocking constraint feature engineering
   alone cannot work around.
+
+
+==============================================================================
+
+
+## 2026-08-19
+
+- **Systematic evaluation: full feasibility-constrained search across the 80-sample held-out set (397-sample agenttesla-vs-qbot model).** Classifier accuracy: 100% (48/48 agenttesla correctly classified malicious, 32/32 qbot correctly classified not-malicious). Counterfactual search (200-candidate budget, full run, no shortcuts): **0/48 = 0.0% feasibility rate**. Total runtime 10.4 hours; per-sample search time highly variable (0.6s–4885.5s, median 90.9s) since `no_flip_found` cases exhaust the full candidate budget.
+
+- **Root cause of the 0% feasibility rate, confirmed exhaustively across all 48 failures (not sampled — every case checked).** The classifier's dominant decision feature is `createtoolhelp32snapshot` count (LightGBM gain 2559, next-highest feature `findresourceexa` at 1080 — a single feature dominates). Learned threshold: 3.0. All 48 held-out malicious samples that failed to flip sit at or below this threshold (mostly exactly 0), meaning every one needs the count to *increase* to flip classification. `propose()`'s candidate types (single-node deletion, substitution, cascade) can only remove or rearrange existing graph events — none can synthesize a new API call. This makes the entire 48/48 failure set structurally, provably unreachable by the current search design, not a matter of search quality, candidate budget, or bad luck across independent trials.
+
+- **Implication for the method's design, not just this dataset.** This is the second independent confirmation (after the earlier single-sample deep-dive on a smaller model, which found the same "needs an increase" pattern on a different dominant feature/threshold) that deletion-only counterfactual search has a systematic blind spot: any decision boundary driven by a count feature where the sample must move *up* is categorically unreachable, regardless of search algorithm quality. Concrete next design step: an insertion-type candidate (add a plausible new API call event) — raises new feasibility-modeling questions (what makes a synthesized event plausible for a sandbox to have actually produced?) but is now a well-motivated, specific addition rather than speculative future work.
+
+- **Search engine and feasibility engine remain unmodified and independently verified throughout this entire evaluation** (26/26 tests, `git diff` clean on `src/counterfactual/search.py` and `src/counterfactual/feasibility.py` at every checkpoint). The 0% result is a property of the classifier's learned decision boundary interacting with the search's candidate space — not evidence of a bug in either component.
+
+
+
+========================
+
+python -m scripts.run_held_out_search
+PS D:\projects\SOFTWARE\CounterFactual> python -m scripts.run_held_out_search
+80 samples left to process.
+
+[1/80] d471fccf43598912d87a61afe9b6b984 (true=0) -- status=not_malicious, orig_prob=0.06159619351288362, new_prob=None, cost=None, 7.3s
+[2/80] f1e51386c9314a29be31514ef07849ed (true=1) -- status=no_flip_found, orig_prob=0.9658604678436054, new_prob=None, cost=None, 91.1s
+[3/80] ebae84848ff3ccdd3d7ef65add150494 (true=0) -- status=not_malicious, orig_prob=0.06159619351288362, new_prob=None, cost=None, 8.8s
+[4/80] c19155ad317de52254bbeca5a3ef183a (true=0) -- status=not_malicious, orig_prob=0.06430266048985259, new_prob=None, cost=None, 5.7s
+[5/80] de8e768f352d14e6ae4a3f55e0bc6ec0 (true=0) -- status=not_malicious, orig_prob=0.06159619351288362, new_prob=None, cost=None, 5.5s
+[6/80] e79283f88b5442dae526598efe33a988 (true=1) -- status=no_flip_found, orig_prob=0.9658604678436054, new_prob=None, cost=None, 330.5s
+[7/80] 2a65c38ce6f23978eafff6a3c8399eae (true=1) -- status=no_flip_found, orig_prob=0.9658604678436054, new_prob=None, cost=None, 1836.9s
+[8/80] 75dda638ab0325fc1bd36449c7a2d523 (true=1) -- status=no_flip_found, orig_prob=0.9658604678436054, new_prob=None, cost=None, 61.4s
+[9/80] eb89fd5ab96c4e20ceb891c3abbb09b0 (true=1) -- status=no_flip_found, orig_prob=0.9658604678436054, new_prob=None, cost=None, 68.5s
+[10/80] 7bdbed830e3c183061a4e32d1cb3ec8e (true=1) -- status=no_flip_found, orig_prob=0.9658604678436054, new_prob=None, cost=None, 306.4s
+[11/80] 266bea059e22c1f41f1e52f91085557f (true=1) -- status=no_flip_found, orig_prob=0.9658604678436054, new_prob=None, cost=None, 1639.2s
+[12/80] b3dfe02fbda31663dae8244cc72b5aa4 (true=0) -- status=not_malicious, orig_prob=0.06159619351288362, new_prob=None, cost=None, 8.5s
+[13/80] b938ad05451164f9955b3708258c3f69 (true=1) -- status=no_flip_found, orig_prob=0.9658604678436054, new_prob=None, cost=None, 1103.5s
+[14/80] 84e92db72cd1acab6ae6fcc4bcaba580 (true=0) -- status=not_malicious, orig_prob=0.06159619351288362, new_prob=None, cost=None, 5.6s
+[15/80] 192d67b731c7d2370090756d8dcb4bbb (true=1) -- status=no_flip_found, orig_prob=0.9658604678436054, new_prob=None, cost=None, 1167.8s
+[16/80] 1fe73fe4d37cae6a02262b5164f3def0 (true=1) -- status=no_flip_found, orig_prob=0.9634733525798159, new_prob=None, cost=None, 1702.7s
+[17/80] a9b63c434e205092b3373e35c051a04a (true=1) -- status=no_flip_found, orig_prob=0.9658604678436054, new_prob=None, cost=None, 479.0s
+[18/80] c23d679d5d2be5be83719e676b001339 (true=0) -- status=not_malicious, orig_prob=0.06159619351288362, new_prob=None, cost=None, 11.6s
+[19/80] 3273a7981f07285e1ef1931ce323200b (true=1) -- status=no_flip_found, orig_prob=0.9658604678436054, new_prob=None, cost=None, 101.6s
+[20/80] 5af87bdc03cef91c14a7a6e8bdb74300 (true=1) -- status=no_flip_found, orig_prob=0.9634250788370189, new_prob=None, cost=None, 87.1s
+[21/80] 4de31388247a9e1fed4c8a6ff24a6ac9 (true=1) -- status=no_flip_found, orig_prob=0.9658604678436054, new_prob=None, cost=None, 1682.1s
+[22/80] c61789e23f6f124e59c658a89d802667 (true=0) -- status=not_malicious, orig_prob=0.06159619351288362, new_prob=None, cost=None, 9.3s
+[23/80] 42dbb5cb5c0b2cbd7463b59ef87462c6 (true=1) -- status=no_flip_found, orig_prob=0.9658604678436054, new_prob=None, cost=None, 337.1s
+[24/80] 132a2ba14ac1a95289b2aca07fd927d3 (true=1) -- status=no_flip_found, orig_prob=0.9658604678436054, new_prob=None, cost=None, 94.0s
+[25/80] 864644f89cfa1aadb202f91c1bd24c11 (true=1) -- status=no_flip_found, orig_prob=0.9658604678436054, new_prob=None, cost=None, 386.8s
+[26/80] 5ba695393b0cc69303e0679c5f60e8b4 (true=1) -- status=no_flip_found, orig_prob=0.9658604678436054, new_prob=None, cost=None, 1618.4s
+[27/80] 8749faaa0cd99cc1c11849ac401736e2 (true=1) -- status=no_flip_found, orig_prob=0.9658604678436054, new_prob=None, cost=None, 842.9s
+[28/80] b640b0931f7fc701a5010b93675a2dee (true=1) -- status=no_flip_found, orig_prob=0.9658604678436054, new_prob=None, cost=None, 2082.9s
+[29/80] cee2ad9f3f42786f3bf31316170eedc4 (true=1) -- status=no_flip_found, orig_prob=0.9658604678436054, new_prob=None, cost=None, 1063.7s
+[30/80] 005c26a27f4968f03c71ed5b6232dbea (true=1) -- status=no_flip_found, orig_prob=0.9658604678436054, new_prob=None, cost=None, 768.4s
+[31/80] d1fe1af58a4415d8cf2077859c54c890 (true=1) -- status=no_flip_found, orig_prob=0.9658604678436054, new_prob=None, cost=None, 50.1s
+[32/80] de387ff820d4b468c4771b0da457e6e5 (true=1) -- status=no_flip_found, orig_prob=0.9634257361699331, new_prob=None, cost=None, 4885.5s
+[33/80] 9c1fb71fed14a2b8f5460b82129e03a3 (true=0) -- status=not_malicious, orig_prob=0.06159619351288362, new_prob=None, cost=None, 10.9s
+[34/80] 2010e737f4435fd3f46c0055ba44a73c (true=1) -- status=no_flip_found, orig_prob=0.9658604678436054, new_prob=None, cost=None, 314.9s
+[35/80] 02bf0fc6d6fdc5aa692f136da966b62c (true=1) -- status=no_flip_found, orig_prob=0.9658604678436054, new_prob=None, cost=None, 349.0s
+[36/80] c385df6dad6414c5834268634718ec62 (true=0) -- status=not_malicious, orig_prob=0.06159619351288362, new_prob=None, cost=None, 6.6s
+[37/80] 1318e8e6e1137db07e22e2e16662d721 (true=1) -- status=no_flip_found, orig_prob=0.9658604678436054, new_prob=None, cost=None, 1338.0s
+[38/80] 63ed8d0a4214ce7c0583a831afcbd8c0 (true=0) -- status=not_malicious, orig_prob=0.06159619351288362, new_prob=None, cost=None, 8.8s
+[39/80] bd52543d0b6bf874430cf5ee0ebf5fd4 (true=0) -- status=not_malicious, orig_prob=0.06159619351288362, new_prob=None, cost=None, 6.2s
+[40/80] a5ebc49571041789245437d1bd7bc271 (true=1) -- status=no_flip_found, orig_prob=0.9658604678436054, new_prob=None, cost=None, 324.5s
+[41/80] fc24cf21d4fdc97c1ab364ed71cd00db (true=1) -- status=no_flip_found, orig_prob=0.9658604678436054, new_prob=None, cost=None, 997.7s
+[42/80] c422d49b3d3d8f5264fbcb26bdf32c26 (true=0) -- status=not_malicious, orig_prob=0.06159619351288362, new_prob=None, cost=None, 6.9s
+[43/80] 471975d5f2d8a1cbf65ee5664ae66ae7 (true=1) -- status=no_flip_found, orig_prob=0.9658604678436054, new_prob=None, cost=None, 820.6s
+[44/80] d66294c92b8dfba0d840eaf3f9ed802e (true=0) -- status=not_malicious, orig_prob=0.06159619351288362, new_prob=None, cost=None, 4.9s
+[45/80] cecdc5af3b097e4ea67f0d3bc5e3148d (true=1) -- status=no_flip_found, orig_prob=0.9658604678436054, new_prob=None, cost=None, 90.8s
+[46/80] 83a3340793cec4cb51526c5f4d6711b9 (true=1) -- status=no_flip_found, orig_prob=0.9658604678436054, new_prob=None, cost=None, 353.3s
+[47/80] a550f57c45188ec167a8def3895c4828 (true=0) -- status=not_malicious, orig_prob=0.06159619351288362, new_prob=None, cost=None, 5.0s
+[48/80] 8f65eef8bfa87e7a9304c914940d50cf (true=0) -- status=not_malicious, orig_prob=0.06159619351288362, new_prob=None, cost=None, 6.5s
+[49/80] 23bcc0472125f1974400e7f51a248e7f (true=0) -- status=not_malicious, orig_prob=0.06159619351288362, new_prob=None, cost=None, 6.6s
+[50/80] c542abe2dc7aea52a097dd592ee9d7b7 (true=1) -- status=no_flip_found, orig_prob=0.9658604678436054, new_prob=None, cost=None, 36.2s
+[51/80] b063e6f64f2de7c7c0b12207955a3620 (true=0) -- status=not_malicious, orig_prob=0.06159619351288362, new_prob=None, cost=None, 6.9s
+[52/80] 86c87c2d829f64c049266b9e0f85f319 (true=1) -- status=no_flip_found, orig_prob=0.9658604678436054, new_prob=None, cost=None, 189.1s
+[53/80] e719222bd4624f1c0a92117fe33e2612 (true=0) -- status=not_malicious, orig_prob=0.06159619351288362, new_prob=None, cost=None, 6.4s
+[54/80] 1788b7df54735dcc51d7740b6a41ae8a (true=1) -- status=no_flip_found, orig_prob=0.9658604678436054, new_prob=None, cost=None, 823.1s
+[55/80] 2333295750647efb58f2e5541887cef3 (true=0) -- status=not_malicious, orig_prob=0.06159619351288362, new_prob=None, cost=None, 8.4s
+[56/80] 812861ad5cbb91bfa01a6a15c2cef128 (true=1) -- status=no_flip_found, orig_prob=0.9658604678436054, new_prob=None, cost=None, 1075.3s
+[57/80] 3711b0b15f26a0b23ab8f21fce1e095d (true=0) -- status=not_malicious, orig_prob=0.06159619351288362, new_prob=None, cost=None, 7.9s
+[58/80] cc806cb9157aaae436fb3eafa8b9be56 (true=1) -- status=no_flip_found, orig_prob=0.9658604678436054, new_prob=None, cost=None, 261.8s
+[59/80] ec2f47d8a5396b2c46f1cfc362c0dc6b (true=1) -- status=no_flip_found, orig_prob=0.9658604678436054, new_prob=None, cost=None, 730.4s
+[60/80] bfba2c5107bcb6cc4fb960361e5d8f7a (true=0) -- status=not_malicious, orig_prob=0.06159619351288362, new_prob=None, cost=None, 7.5s
+[61/80] 5e28d0aedcfb4e7e344c8da36176ed97 (true=1) -- status=no_flip_found, orig_prob=0.9658604678436054, new_prob=None, cost=None, 52.5s
+[62/80] d0c3b00cab92c1f2e17af864cc469518 (true=1) -- status=no_flip_found, orig_prob=0.9658604678436054, new_prob=None, cost=None, 408.1s
+[63/80] 21c8c9b4fe3f3a655171bc51cd34e345 (true=1) -- status=no_flip_found, orig_prob=0.9658604678436054, new_prob=None, cost=None, 696.2s
+[64/80] f922c0fe104d4b1fe24cd8fa90ed64c4 (true=0) -- status=not_malicious, orig_prob=0.06430266048985259, new_prob=None, cost=None, 6.4s
+[65/80] 700041a2722dd3976ea7a58823616265 (true=1) -- status=no_flip_found, orig_prob=0.9658604678436054, new_prob=None, cost=None, 260.3s
+[66/80] 313fafcc8601c3fa149bd4192cf8482c (true=0) -- status=not_malicious, orig_prob=0.2895740048056661, new_prob=None, cost=None, 0.6s
+[67/80] b7f6999b178db93cd5f9c05ed330aee2 (true=0) -- status=not_malicious, orig_prob=0.06159619351288362, new_prob=None, cost=None, 7.1s
+[68/80] 4ce54eda7650ff0f8062189f089b162e (true=1) -- status=no_flip_found, orig_prob=0.9658604678436054, new_prob=None, cost=None, 435.3s
+[69/80] c8d90ccd689b61c6b5f4978f5282a74f (true=0) -- status=not_malicious, orig_prob=0.06159619351288362, new_prob=None, cost=None, 7.1s
+[70/80] 90ed98c5150194fc3b55f335ac61b943 (true=0) -- status=not_malicious, orig_prob=0.06159619351288362, new_prob=None, cost=None, 6.6s
+[71/80] b2fb08ffc4e31dbd2672637a96699ab7 (true=0) -- status=not_malicious, orig_prob=0.06159619351288362, new_prob=None, cost=None, 7.9s
+[72/80] 7dabb60027b6a37d05bb47434d49a9a9 (true=1) -- status=no_flip_found, orig_prob=0.9635103256743205, new_prob=None, cost=None, 942.6s
+[73/80] 9e8d137e98395ae53b5e5a6c1f76a6aa (true=1) -- status=no_flip_found, orig_prob=0.9658604678436054, new_prob=None, cost=None, 46.7s
+[74/80] b3c3d4e0a644dc193c6a8dfec5975bba (true=0) -- status=not_malicious, orig_prob=0.06159619351288362, new_prob=None, cost=None, 4.7s
+[75/80] ba25579c07a6f7540778a520e6587c84 (true=1) -- status=no_flip_found, orig_prob=0.9658604678436054, new_prob=None, cost=None, 304.9s
+[76/80] 6398cc89d35a31b14a7fa0e6886b8430 (true=1) -- status=no_flip_found, orig_prob=0.9658604678436054, new_prob=None, cost=None, 2686.7s
+[77/80] 0c66d5af0dd882d40ce05e8121fdb0b5 (true=1) -- status=no_flip_found, orig_prob=0.9658604678436054, new_prob=None, cost=None, 802.8s
+[78/80] a1cf058fbe5fe9f1704557a3703c7e25 (true=0) -- status=not_malicious, orig_prob=0.06159619351288362, new_prob=None, cost=None, 5.4s
+[79/80] fcb72c41cd799fef5bdd6f2865fe37dd (true=0) -- status=not_malicious, orig_prob=0.06159619351288362, new_prob=None, cost=None, 8.1s
+[80/80] 97e744357997dda1ad4fdae4e773aed6 (true=0) -- status=not_malicious, orig_prob=0.06159619351288362, new_prob=None, cost=None, 6.7s
+
+DONE. Results in data/held_out_search_results.csv

@@ -292,6 +292,36 @@ class ParserGraphTest(unittest.TestCase):
             max_index_seen, 250,
             "single-node candidates should reach well past node 250 with random sampling"
         )
+
+    def test_insertion_candidate_accepted_when_process_has_enumeration_family_call(self):
+        from src.counterfactual.feasibility import validate_candidate
+
+        G = nx.DiGraph()
+        G.add_node("proc:1", api="process", entity_type="process", process_id=1)
+        G.add_node("n0", api="CreateToolhelp32Snapshot", entity_type="file",
+                   process_id=1, resources=[], count=1, timestamps=[1], sequences=[1])
+        G.add_edge("proc:1", "n0", type="process")
+
+        candidate = {
+            "delete_nodes": [], "substitute": {},
+            "insert_nodes": [{"api": "CreateToolhelp32Snapshot", "target_process_id": 1}],
+        }
+        self.assertTrue(validate_candidate(G, candidate))
+
+    def test_insertion_candidate_rejected_when_process_has_no_enumeration_family_call(self):
+        from src.counterfactual.feasibility import validate_candidate
+
+        G = nx.DiGraph()
+        G.add_node("proc:1", api="process", entity_type="process", process_id=1)
+        G.add_node("n0", api="CreateFile", entity_type="file",
+                   process_id=1, resources=[], count=1, timestamps=[1], sequences=[1])
+        G.add_edge("proc:1", "n0", type="process")
+
+        candidate = {
+            "delete_nodes": [], "substitute": {},
+            "insert_nodes": [{"api": "CreateToolhelp32Snapshot", "target_process_id": 1}],
+        }
+        self.assertFalse(validate_candidate(G, candidate))
     
 if __name__ == "__main__":
     unittest.main()

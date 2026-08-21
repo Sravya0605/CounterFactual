@@ -128,6 +128,29 @@ class CounterfactualSearch:
                 if self._within_edit_budget(cascade_candidate):
                     cands.append(cascade_candidate)
 
+        # Pass 3: insertion candidates -- one per process that already shows
+        # at least one enumeration-family API call. Purely additive; Pass 1
+        # and Pass 2 above are untouched.
+        from src.counterfactual.feasibility import ENUMERATION_FAMILY
+
+        processes_with_family_call = set()
+        for _, data in self.graph.nodes(data=True):
+            pid = data.get("process_id")
+            api = str(data.get("api") or "").lower()
+            if pid is not None and api in ENUMERATION_FAMILY:
+                processes_with_family_call.add(pid)
+
+        for pid in processes_with_family_call:
+            if len(cands) >= self.max_candidates:
+                break
+            insert_candidate = {
+                "delete_nodes": [],
+                "substitute": {},
+                "insert_nodes": [{"api": "CreateToolhelp32Snapshot", "target_process_id": pid}],
+            }
+            if self._within_edit_budget(insert_candidate):
+                cands.append(insert_candidate)
+
         return cands
 
     def validate(self, candidate: Dict) -> bool:
