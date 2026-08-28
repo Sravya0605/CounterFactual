@@ -31,6 +31,29 @@ def apply_candidate(G: nx.DiGraph, candidate: Dict) -> nx.DiGraph:
             from src.counterfactual.substitutions import update_resources_for_substitution
 
             G2.nodes[node]["resources"] = update_resources_for_substitution(api, original_resources)
+    # Handle synthetic insertions: create new nodes anchored to an existing
+    # anchor node. Insertions use the schema: candidate["insert_nodes"] = [
+    # {"anchor": node_id, "api": api_name, "entity_type": ..., "resources": [...]}, ...]
+    insertions = candidate.get("insert_nodes", []) or []
+    ins_idx = 0
+    for ins in insertions:
+        anchor = ins.get("anchor")
+        api = ins.get("api")
+        entity_type = ins.get("entity_type", "api_call")
+        resources = ins.get("resources", []) or []
+        timestamps = ins.get("timestamps", None)
+        # Create a stable new node id that won't collide with existing ones.
+        new_node = f"__insert__{anchor}__{ins_idx}"
+        ins_idx += 1
+        # Timestamp: if anchor has timestamps, place the insertion shortly
+        # after the anchor to preserve temporal ordering.
+        if timestamps is None and anchor in G2:
+            anchor_ts = G2.nodes[anchor].get("timestamps") or []
+            timestamps = anchor_ts[:1] if anchor_ts else []
+        G2.add_node(new_node, api=api, entity_type=entity_type, resources=list(resources), timestamps=timestamps)
+        # Add a temporal edge from anchor -> new_node
+        if anchor in G2:
+            G2.add_edge(anchor, new_node, type="temporal")
     return G2
 
 
@@ -39,7 +62,8 @@ def candidate_cost(candidate: Dict) -> int:
     delete_nodes = len(set(candidate.get("delete_nodes", []) or []))
     delete_edges = len(candidate.get("delete_edges", []) or [])
     substitutions = len((candidate.get("substitute", {}) or {}).keys())
-    return delete_nodes + delete_edges + substitutions
+    insertions = len(candidate.get("insert_nodes", []) or [])
+    return delete_nodes + delete_edges + substitutions + insertions
 
 
 OPENING_API_TOKENS = {"createfile", "createprocess", "regcreatekey", "socket", "createservice"}
@@ -169,6 +193,26 @@ def validate_candidate(G: nx.DiGraph, candidate: Dict) -> bool:
                     break
             if has_producer or (node, resource) in resource_roots:
                 continue
+            # Allow resources that originate from synthetic insertions if
+            # the insertion was explicitly anchored and judged plausible.
+            insertions = candidate.get("insert_nodes", []) or []
+            inserted_node_names = set()
+            for i, ins in enumerate(insertions):
+                anchor = ins.get("anchor")
+                inserted_node_names.add(f"__insert__{anchor}__{i}")
+            if node in inserted_node_names:
+                # Ensure the anchor plausibility rule holds.
+                try:
+                    from src.counterfactual.insertions import is_anchor_plausible
+
+                    # Anchor id encoded in the synthetic node name
+                    parts = node.split("__")
+                    # pattern: ['', 'insert', anchor, idx]
+                    anchor = parts[2] if len(parts) > 2 else None
+                    if anchor and is_anchor_plausible(G, anchor, G2.nodes[node].get("api")):
+                        continue
+                except Exception:
+                    pass
             return False
 
     for node, api in (candidate.get("substitute", {}) or {}).items():
@@ -177,6 +221,22 @@ def validate_candidate(G: nx.DiGraph, candidate: Dict) -> bool:
             return False
         if api not in get_substitutes(original_api):
             return False
+
+    # Validate insertions: anchors must exist and be plausible according to
+    # the insertion heuristics.
+    insertions = candidate.get("insert_nodes", []) or []
+    if insertions:
+        try:
+            from src.counterfactual.insertions import is_anchor_plausible
+        except Exception:
+            return False
+        for ins in insertions:
+            anchor = ins.get("anchor")
+            api = ins.get("api")
+            if anchor not in G.nodes:
+                return False
+            if not is_anchor_plausible(G, anchor, api):
+                return False
 
     process_nodes = [node for node, data in G2.nodes(data=True) if data.get("entity_type") == "process"]
     if process_nodes:

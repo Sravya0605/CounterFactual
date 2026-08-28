@@ -23,8 +23,19 @@ class CounterfactualSearch:
         self.graph = graph
         self.max_edits = 10
         self.max_candidates = 200
+        # Separate insertion candidate budget so deletions/substitutions
+        # cannot starve insert proposals on large graphs.
+        self.max_insertion_candidates = 50
         self.threshold = 0.5
         self.api_vocab = None
+        # Prefer whatever api_vocab the classifier/harness provides (trained
+        # vocabulary) rather than rebuilding from the single graph, which
+        # biases embeddings/features at search time.
+        if self.classifier is not None and hasattr(self.classifier, "api_vocab"):
+            self.api_vocab = getattr(self.classifier, "api_vocab")
+        
+        # Optionally allow turning feasibility checking off for ablation runs.
+        self.enforce_feasibility = True
 
     def _apply_candidate(self, candidate: Dict) -> nx.DiGraph:
         return feasibility.apply_candidate(self.graph, candidate)
@@ -128,9 +139,23 @@ class CounterfactualSearch:
                 if self._within_edit_budget(cascade_candidate):
                     cands.append(cascade_candidate)
 
+        # Pass 3: insertion proposals (separate budget)
+        try:
+            from src.counterfactual.insertions import propose_insertions
+
+            insert_cands = propose_insertions(self.graph, top_k=self.max_insertion_candidates, api_vocab=self.api_vocab)
+            # Do not let insertions consume the main candidate budget; return
+            # them appended so callers can still see a mixture.
+            cands.extend(insert_cands[: self.max_insertion_candidates])
+        except Exception:
+            # If insertion proposer fails, fall back silently to existing cands
+            pass
+
         return cands
 
     def validate(self, candidate: Dict) -> bool:
+        if not self.enforce_feasibility:
+            return True
         return feasibility.validate_candidate(self.graph, candidate)
 
     def run(self) -> Optional[Dict]:

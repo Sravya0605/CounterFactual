@@ -8,7 +8,7 @@ re-instantiation steps.
 from typing import Any
 import json
 import networkx as nx
-from datetime import datetime
+from datetime import datetime, timezone
 
 
 def generate_synthetic_cape_report(G: nx.DiGraph, out_path: str) -> None:
@@ -32,7 +32,7 @@ def generate_synthetic_cape_report(G: nx.DiGraph, out_path: str) -> None:
         ts += 1
 
     processes.append({"pid": 1234, "calls": calls})
-    report = {"behavior": {"processes": processes}, "generated_at": datetime.utcnow().isoformat()}
+    report = {"behavior": {"processes": processes}, "generated_at": datetime.now(timezone.utc).isoformat()}
     with open(out_path, "w", encoding="utf-8") as f:
         json.dump(report, f, indent=2)
 
@@ -45,7 +45,7 @@ def generate_manual_checklist(result: dict, out_path: str) -> None:
     """
     lines = []
     lines.append("Tier-2 Re-instantiation Checklist")
-    lines.append("Generated: " + datetime.utcnow().isoformat())
+    lines.append("Generated: " + datetime.now(timezone.utc).isoformat())
     lines.append("")
     res = result.get("result", {})
     lines.append("Candidate summary:")

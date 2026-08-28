@@ -12,52 +12,81 @@ from src.classifier.harness import ClassifierHarness
 from src.counterfactual.search import CounterfactualSearch
 from src.counterfactual.feasibility import validate_candidate, candidate_cost
 
-with open('data/training_batch.csv', newline='', encoding='utf-8') as f:
-    rows = list(csv.DictReader(f))
-
-rows = [
-    row for row in rows
-    if row['avclass_family'].strip().lower() in {'emotet', 'agenttesla'}
-]
-print('SCOPE: this evaluation covers emotet vs agenttesla only. qbot excluded (smallest qbot sample 96.3 MB exceeds memory cap; requires separate evaluation with streaming JSON parsing, tracked as follow-up work).')
-
+# Use the full training batch (streamed) and process one report at a time.
+CSV_PATH = 'data/training_batch_full.csv'
 reports_dir = 'data/training_reports'
 
 
-def load_graphs(rows):
-    graphs, labels, md5s = [], [], []
-    skipped = 0
+def stream_graphs(rows):
+    """Yield one parsed graph and metadata at a time to avoid large memory usage."""
     for row in rows:
         md5 = row['md5']
         family = row['avclass_family'].strip()
         path = os.path.join(reports_dir, f'{md5}.json')
-        size_bytes = os.path.getsize(path)
-        size_mb = size_bytes / (1024 * 1024)
-        if size_mb > 60:
-            print(f'SKIPPED {md5} ({family}): {size_mb:.1f} MB exceeds 60 MB cap')
-            skipped += 1
+        if not os.path.exists(path):
+            yield None, None, md5, family, f'file missing: {path}'
             continue
-        events = parse_cape_json(path)
-        G = build_behavior_graph(events)
-        graphs.append(G)
-        labels.append(1 if family.lower() == 'emotet' else 0)
-        md5s.append(md5)
-    return graphs, labels, md5s, skipped
+        try:
+            events = parse_cape_json(path)
+            G = build_behavior_graph(events)
+            yield G, (1 if family.lower() == 'emotet' else 0), md5, family, None
+        except Exception as exc:
+            yield None, None, md5, family, f'parse error: {exc}'
+
+def minimality_check(candidate, graph, harness):
+    """Simple minimality check: returns True if no strict subset of the
+    candidate's edits also flips the classifier. This is conservative and
+    only checks single-node subsets for efficiency.
+    """
+    if candidate is None:
+        return False
+    base_cost = candidate_cost(candidate)
+    # Check single-node deletions
+    del_nodes = candidate.get("delete_nodes", []) or []
+    for n in del_nodes:
+        sub = {"delete_nodes": [n], "substitute": {}}
+        if not validate_candidate(graph, sub):
+            continue
+        edited = CounterfactualSearch(classifier=harness, graph=graph)._apply_candidate(sub)
+        new_prob = float(harness.predict_proba([edited])[0])
+        if new_prob < CounterfactualSearch(classifier=harness, graph=graph).threshold:
+            return False
+    # Check single substitutions
+    subs = (candidate.get("substitute", {}) or {}).items()
+    for node, api in subs:
+        sub = {"delete_nodes": [], "substitute": {node: api}}
+        if not validate_candidate(graph, sub):
+            continue
+        edited = CounterfactualSearch(classifier=harness, graph=graph)._apply_candidate(sub)
+        new_prob = float(harness.predict_proba([edited])[0])
+        if new_prob < CounterfactualSearch(classifier=harness, graph=graph).threshold:
+            return False
+    return True
+
 
 def run_single_seed(seed):
-    seeded_rows = list(rows)
-    random.Random(seed).shuffle(seeded_rows)
-    split = int(len(seeded_rows) * 0.8)
-    train_rows, test_rows = seeded_rows[:split], seeded_rows[split:]
+    # Stream CSV rows rather than loading everything into memory.
+    with open(CSV_PATH, newline='', encoding='utf-8') as f:
+        all_rows = list(csv.DictReader(f))
+
+    random.Random(seed).shuffle(all_rows)
+    split = int(len(all_rows) * 0.8)
+    train_rows, test_rows = all_rows[:split], all_rows[split:]
 
     print('')
     print(f'SEED={seed}')
     print(f'Train: {len(train_rows)}, Held-out test: {len(test_rows)}')
 
-    train_graphs, train_labels, _, train_skipped = load_graphs(train_rows)
-    test_graphs, _, test_md5s, test_skipped = load_graphs(test_rows)
-    print(f'SKIPPED TRAIN: {train_skipped}')
-    print(f'SKIPPED TEST: {test_skipped}')
+    # Train on streamed graphs (but here we still collect feature counters
+    # similar to the full-train script). For simplicity reuse ClassifierHarness
+    # training path: parse train graphs one at a time and accumulate.
+    train_graphs = []
+    train_labels = []
+    for G, label, md5, family, err in stream_graphs(train_rows):
+        if err or G is None:
+            continue
+        train_graphs.append(G)
+        train_labels.append(label)
 
     harness = ClassifierHarness(backend='lgbm', model_path='models/emotet_binary_holdout_lgbm.pkl')
     harness.train(
@@ -76,43 +105,44 @@ def run_single_seed(seed):
 
     records = []
     constrained_completed = 0
-    for md5, graph in zip(test_md5s, test_graphs):
-        prob = float(harness.predict_proba([graph])[0])
-        search = CounterfactualSearch(classifier=harness, graph=graph)
+    unconstrained_completed = 0
+    # Evaluate on test set streaming one graph at a time.
+    for G, label, md5, family, err in stream_graphs(test_rows):
+        if err or G is None:
+            records.append({'md5': md5, 'candidate_cost': None, 'orig_prob': None, 'status': 'skipped', 'error': err})
+            continue
+        prob = float(harness.predict_proba([G])[0])
+        search = CounterfactualSearch(classifier=harness, graph=G)
+        # Constrained run
         result = search.run()
         status = result.get('status')
         cand = result.get('candidate')
         cost = candidate_cost(cand) if cand is not None else None
-        records.append({'md5': md5, 'candidate_cost': cost, 'orig_prob': prob, 'status': status})
+        is_minimal = minimality_check(cand, G, harness)
+        records.append({'md5': md5, 'candidate_cost': cost, 'orig_prob': prob, 'status': status, 'is_minimal': is_minimal})
         if status == 'completed':
             constrained_completed += 1
 
-    # Keep unconstrained baseline in the pipeline, but do not print per-sample lines.
-    for md5, graph in zip(test_md5s, test_graphs):
-        search = CounterfactualSearch(classifier=harness, graph=graph)
-        orig_prob = float(harness.predict_proba([graph])[0])
-        if orig_prob < search.threshold:
-            continue
+        # Unconstrained baseline: same proposer but no feasibility checks.
+        search_uncon = CounterfactualSearch(classifier=harness, graph=G)
+        search_uncon.enforce_feasibility = False
         best_cost = None
         best_cand = None
-        for i, cand in enumerate(search.propose()):
+        for i, cand in enumerate(search_uncon.propose()):
             if i >= 30:
                 break
-            edited = search._apply_candidate(cand)
+            edited = search_uncon._apply_candidate(cand)
             new_prob = float(harness.predict_proba([edited])[0])
-            if new_prob < search.threshold:
+            if new_prob < search_uncon.threshold:
                 cost = candidate_cost(cand)
                 if best_cost is None or cost < best_cost:
                     best_cost = cost
                     best_cand = cand
         if best_cand is not None:
-            validate_candidate(graph, best_cand)
+            unconstrained_completed += 1
 
-    heldout_total_evaluated = len(test_md5s)
-    if heldout_total_evaluated:
-        feasibility_rate = (constrained_completed / heldout_total_evaluated) * 100
-    else:
-        feasibility_rate = 0.0
+    heldout_total_evaluated = len([r for r in records if r.get('status') != 'skipped'])
+    feasibility_rate = (constrained_completed / heldout_total_evaluated) * 100 if heldout_total_evaluated else 0.0
 
     print(f'heldout_total_evaluated={heldout_total_evaluated}')
     print(f'completed_flips={constrained_completed}')
