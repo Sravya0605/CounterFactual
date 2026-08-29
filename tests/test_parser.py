@@ -391,6 +391,62 @@ class ParserGraphTest(unittest.TestCase):
         # sequences should be strictly increasing across the chained inserts
         seqs = sorted(edited.nodes[n]["sequences"][0] for n in inserted)
         self.assertEqual(seqs, sorted(set(seqs)), "inserted sequence numbers must be distinct")
+
+    def test_findresourceexa_insertion_accepted_with_module_anchor(self):
+        from src.counterfactual.feasibility import validate_candidate
+
+        G = nx.DiGraph()
+        G.add_node("proc:1", api="process", entity_type="process", process_id=1)
+        G.add_node("n0", api="GetModuleHandleA", entity_type="file",
+                   process_id=1, resources=[], count=1, timestamps=[1], sequences=[1])
+        G.add_edge("proc:1", "n0", type="process")
+
+        candidate = {
+            "delete_nodes": [], "substitute": {},
+            "insert_nodes": [{"api": "FindResourceExA", "target_process_id": 1}],
+        }
+        self.assertTrue(validate_candidate(G, candidate))
+
+    def test_findresourceexa_insertion_rejected_without_module_anchor(self):
+        from src.counterfactual.feasibility import validate_candidate
+
+        G = nx.DiGraph()
+        G.add_node("proc:1", api="process", entity_type="process", process_id=1)
+        G.add_node("n0", api="ReadProcessMemory", entity_type="file",
+                   process_id=1, resources=[], count=1, timestamps=[1], sequences=[1])
+        G.add_edge("proc:1", "n0", type="process")
+
+        candidate = {
+            "delete_nodes": [], "substitute": {},
+            "insert_nodes": [{"api": "FindResourceExA", "target_process_id": 1}],
+        }
+        self.assertFalse(
+            validate_candidate(G, candidate),
+            "readprocessmemory anchors createtoolhelp32snapshot, not findresourceexa -- should not justify it"
+        )
+
+    def test_joint_two_feature_insertion_candidate_valid(self):
+        from src.counterfactual.feasibility import apply_candidate, validate_candidate
+
+        G = nx.DiGraph()
+        G.add_node("proc:1", api="process", entity_type="process", process_id=1)
+        G.add_node("n0", api="GetModuleHandleA", entity_type="file",
+                   process_id=1, resources=[], count=1, timestamps=[1], sequences=[1])
+        G.add_edge("proc:1", "n0", type="process")
+
+        candidate = {
+            "delete_nodes": [], "substitute": {},
+            "insert_nodes": (
+                [{"api": "CreateToolhelp32Snapshot", "target_process_id": 1} for _ in range(4)]
+                + [{"api": "FindResourceExA", "target_process_id": 1} for _ in range(2)]
+            ),
+        }
+        self.assertTrue(validate_candidate(G, candidate))
+        edited = apply_candidate(G, candidate)
+        ct_count = sum(1 for _, d in edited.nodes(data=True) if d.get("api") == "CreateToolhelp32Snapshot")
+        fr_count = sum(1 for _, d in edited.nodes(data=True) if d.get("api") == "FindResourceExA")
+        self.assertEqual(ct_count, 4)
+        self.assertEqual(fr_count, 2)
     
 if __name__ == "__main__":
     unittest.main()

@@ -72,30 +72,42 @@ def candidate_cost(candidate: Dict) -> int:
     insertions = len(candidate.get("insert_nodes", []) or [])
     return delete_nodes + delete_edges + substitutions + insertions
 
-INSERTABLE_APIS = {"createtoolhelp32snapshot"}
+INSERTABLE_APIS = {"createtoolhelp32snapshot", "findresourceexa"}
 
-ANCHOR_FAMILY = {
-    "createtoolhelp32snapshot", "process32first", "process32next",
-    "module32first", "module32next", "getmodulehandlea", "getprocaddress",
-    "virtualqueryex", "readprocessmemory",
+# Real, properly-cased API names for realistic node attributes -- feature
+# extraction lowercases everything anyway, but inserted nodes should still
+# look like genuine CAPE trace entries.
+INSERTABLE_API_DISPLAY_NAMES = {
+    "createtoolhelp32snapshot": "CreateToolhelp32Snapshot",
+    "findresourceexa": "FindResourceExA",
+}
+
+# Per-inserted-API plausibility anchor sets. Kept per-API rather than one
+# shared family, since different inserted APIs imply different behavioral
+# categories -- process/memory introspection vs. module resource lookup --
+# and conflating them would let an unrelated anchor justify an unrelated
+# insertion. createtoolhelp32snapshot's set is unchanged from the earlier
+# single shared ANCHOR_FAMILY; findresourceexa gets its own, narrower set
+# anchored on module-handling activity (LoadLibrary/GetModuleHandle-style
+# calls), since that's the real-world context FindResourceExA appears in.
+INSERTION_ANCHORS = {
+    "createtoolhelp32snapshot": {
+        "createtoolhelp32snapshot", "process32first", "process32next",
+        "module32first", "module32next", "getmodulehandlea", "getprocaddress",
+        "virtualqueryex", "readprocessmemory",
+    },
+    "findresourceexa": {
+        "findresourceexa", "getmodulehandlea", "getprocaddress",
+    },
 }
 
 
 def _check_insertion_plausibility(G: nx.DiGraph, candidate: Dict) -> bool:
     """An inserted API call is only plausible if (a) it's one of the specific
     APIs we allow inserting at all, and (b) the target process already shows
-    at least one call from the broader process/module-introspection anchor
-    family somewhere in its OWN observed timeline. The anchor family is
-    deliberately broader than INSERTABLE_APIS -- e.g. a process that already
-    calls ReadProcessMemory (the standard second step in process-injection
-    workflows, after enumeration) is treated as plausibly capable of also
-    having enumerated processes, even if CreateToolhelp32Snapshot itself
-    isn't already present. This is a judgment call about API semantic
-    relatedness, not a purely mechanical family match -- documented here
-    because it should be stated exactly this way in any writeup, not glossed
-    as a narrower "same API family" rule than it actually is in practice.
-    Checked against the ORIGINAL graph G, not the edited one, since this is
-    a claim about pre-existing behavior.
+    at least one call from THAT API's own anchor set somewhere in its OWN
+    observed timeline. Checked against the ORIGINAL graph G, not the edited
+    one, since this is a claim about pre-existing behavior.
     """
     insert_nodes = candidate.get("insert_nodes", []) or []
     if not insert_nodes:
@@ -105,9 +117,10 @@ def _check_insertion_plausibility(G: nx.DiGraph, candidate: Dict) -> bool:
         process_id = spec.get("target_process_id")
         if api not in INSERTABLE_APIS:
             return False
+        anchor_set = INSERTION_ANCHORS.get(api, set())
         has_anchor_call = any(
             data.get("process_id") == process_id
-            and str(data.get("api") or "").lower() in ANCHOR_FAMILY
+            and str(data.get("api") or "").lower() in anchor_set
             for _, data in G.nodes(data=True)
         )
         if not has_anchor_call:

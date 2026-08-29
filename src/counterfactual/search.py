@@ -107,29 +107,52 @@ class CounterfactualSearch:
         # giving them first claim on the budget doesn't meaningfully starve
         # Pass 1's coverage, but NOT doing so starves insertions completely
         # on every sufficiently large graph -- i.e. most real samples.
-        from src.counterfactual.feasibility import ANCHOR_FAMILY
+        from src.counterfactual.feasibility import INSERTION_ANCHORS, INSERTABLE_API_DISPLAY_NAMES
 
-        processes_with_family_call = set()
+        process_anchored_apis: Dict[Any, set] = {}
         for _, data in self.graph.nodes(data=True):
             pid = data.get("process_id")
             api = str(data.get("api") or "").lower()
-            if pid is not None and api in ANCHOR_FAMILY:
-                processes_with_family_call.add(pid)
+            if pid is None:
+                continue
+            for insertable_api, anchors in INSERTION_ANCHORS.items():
+                if api in anchors:
+                    process_anchored_apis.setdefault(pid, set()).add(insertable_api)
 
-        for pid in processes_with_family_call:
-            for k in range(1, 6):
-                if len(cands) >= self.max_candidates:
-                    break
-                insert_candidate = {
-                    "delete_nodes": [],
-                    "substitute": {},
-                    "insert_nodes": [
-                        {"api": "CreateToolhelp32Snapshot", "target_process_id": pid}
-                        for _ in range(k)
-                    ],
-                }
-                if self._within_edit_budget(insert_candidate):
-                    cands.append(insert_candidate)
+        for pid, anchored_apis in process_anchored_apis.items():
+            for target_api in anchored_apis:
+                for k in range(1, 6):
+                    if len(cands) >= self.max_candidates:
+                        break
+                    insert_candidate = {
+                        "delete_nodes": [], "substitute": {},
+                        "insert_nodes": [
+                            {"api": INSERTABLE_API_DISPLAY_NAMES[target_api], "target_process_id": pid}
+                            for _ in range(k)
+                        ],
+                    }
+                    if self._within_edit_budget(insert_candidate):
+                        cands.append(insert_candidate)
+
+            # Joint candidates: when a process is anchored for MORE than one
+            # insertable API, also try inserting them together -- verified
+            # necessary on a real held-out sample where neither
+            # createtoolhelp32snapshot nor findresourceexa alone was
+            # sufficient to cross its own learned threshold, but both
+            # together were required.
+            if len(anchored_apis) >= 2:
+                for k in range(1, 6):
+                    if len(cands) >= self.max_candidates:
+                        break
+                    insert_specs = []
+                    for target_api in sorted(anchored_apis):
+                        insert_specs.extend(
+                            {"api": INSERTABLE_API_DISPLAY_NAMES[target_api], "target_process_id": pid}
+                            for _ in range(k)
+                        )
+                    joint_candidate = {"delete_nodes": [], "substitute": {}, "insert_nodes": insert_specs}
+                    if self._within_edit_budget(joint_candidate):
+                        cands.append(joint_candidate)
 
         # Pass 1: single-node deletions for EVERY node, across the whole budget,
         # before any cascades or substitutions are considered. Without this pass
