@@ -3,6 +3,7 @@ __pycache__/
 *.pyo
 .venv/
 /data/
+/7zip/
 
 models/*.pkl
 

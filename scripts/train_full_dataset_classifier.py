@@ -15,8 +15,9 @@ from src.utils.graph_features import (
     graph_to_edge_features,
     graph_to_entropy_features,
     graph_to_normalized_api_features,
+    graph_to_sublinear_api_features,
 )
-from src.classifier.lgbm_model import train_lgbm, predict_proba as lgbm_predict_proba
+from src.classifier.lgbm_model import DEFAULT_LGBM_PARAMS, train_lgbm, predict_proba as lgbm_predict_proba
 
 REPORTS_DIR = 'data/training_reports'
 CSV_PATH = 'data/training_batch.csv'
@@ -33,16 +34,8 @@ if FRAMING == 'agenttesla_vs_qbot':
 # meant to include every sample regardless of file size, since it never
 # holds more than one parsed graph in memory at a time.
 
-LGBM_PARAMS = {
-    'objective': 'binary',
-    'metric': 'binary_logloss',
-    'num_leaves': 31,
-    'max_depth': -1,
-    'min_data_in_leaf': 3,
-    'learning_rate': 0.05,
-    'lambda_l2': 1.0,
-}
-LGBM_ROUNDS = 50
+LGBM_PARAMS = DEFAULT_LGBM_PARAMS.copy()
+LGBM_ROUNDS = 200
 
 process = psutil.Process(os.getpid())
 
@@ -55,6 +48,7 @@ def extract_feature_counter(G):
     from collections import Counter
     features = Counter()
     features.update(graph_to_api_counts(G))
+    features.update(graph_to_sublinear_api_features(G))
     features.update({f"ngram_{'_'.join(gram)}": v for gram, v in graph_to_ngram_features(G).items()})
     features.update(graph_to_edge_features(G))
     features.update(graph_to_entropy_features(G))
@@ -158,7 +152,7 @@ if __name__ == '__main__':
 
     print('')
     print(f'LGBM params: {LGBM_PARAMS}, rounds={LGBM_ROUNDS}')
-    model = train_lgbm(X_train, train_labels, params=LGBM_PARAMS, num_boost_round=LGBM_ROUNDS)
+    model = train_lgbm(X_train, train_labels, params=LGBM_PARAMS, num_boost_round=LGBM_ROUNDS, calibrate=True)
 
     os.makedirs(os.path.dirname(MODEL_OUT_PATH), exist_ok=True)
     with open(MODEL_OUT_PATH, 'wb') as f:

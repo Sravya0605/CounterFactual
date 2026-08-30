@@ -8,6 +8,11 @@ import hashlib
 import json
 from typing import Any, Dict, List, Optional
 
+try:
+    import orjson
+except Exception:  # pragma: no cover - optional fast-path dependency
+    orjson = None
+
 RESOURCE_KEYS = (
     "file",
     "filename",
@@ -58,6 +63,37 @@ ATTACK_HINTS = {
     "createservice": "T1543.003",
     "createremotethread": "T1055.003",
 }
+
+
+def _load_json_file(path: str) -> Any:
+    with open(path, "rb") as handle:
+        if orjson is not None:
+            return orjson.loads(handle.read())
+        return json.loads(handle.read().decode("utf-8"))
+
+
+def _cap_repeating_api_calls(calls: List[Dict[str, Any]], max_repeats: int = 5) -> List[Dict[str, Any]]:
+    """Bound contiguous polling loops that otherwise explode graph size without removing signal."""
+    if not calls:
+        return []
+
+    capped: List[Dict[str, Any]] = []
+    last_api: Optional[str] = None
+    streak = 0
+
+    for call in calls:
+        api = str(call.get("api") or call.get("name") or "unknown")
+        if api == last_api:
+            streak += 1
+            if streak <= max_repeats:
+                capped.append(call)
+            continue
+
+        last_api = api
+        streak = 1
+        capped.append(call)
+
+    return capped
 
 
 def _hash_event(evt: Dict[str, Any]) -> str:
@@ -161,11 +197,10 @@ def parse_cape_json(path: str) -> List[Dict[str, Any]]:
     and a stable id.
     """
     try:
-        with open(path, "r", encoding="utf-8") as handle:
-            report = json.load(handle)
+        report = _load_json_file(path)
     except FileNotFoundError as exc:
         raise FileNotFoundError(f"CAPE report not found: {path}") from exc
-    except json.JSONDecodeError as exc:
+    except (json.JSONDecodeError, ValueError) as exc:
         raise ValueError(f"Malformed JSON in CAPE report: {path}") from exc
 
     events: List[Dict[str, Any]] = []
@@ -177,7 +212,7 @@ def parse_cape_json(path: str) -> List[Dict[str, Any]]:
 
     for idx, proc in enumerate(processes):
         proc_id = proc.get("pid") or proc.get("process_id") or proc.get("name") or f"proc:{idx}"
-        calls = proc.get("calls") or []
+        calls = _cap_repeating_api_calls(proc.get("calls") or [])
         for call_idx, call in enumerate(calls):
             api = call.get("api") or call.get("name") or "unknown"
             timestamp = call.get("timestamp") or call.get("time") or proc.get("timestamp")
@@ -199,7 +234,8 @@ def parse_cape_json(path: str) -> List[Dict[str, Any]]:
             events.append(evt)
 
     if not events and isinstance(report.get("calls"), list):
-        for idx, call in enumerate(report["calls"]):
+        calls = _cap_repeating_api_calls(report["calls"])
+        for idx, call in enumerate(calls):
             api = call.get("api") or call.get("name") or "unknown"
             timestamp = call.get("timestamp") or call.get("time")
             args = call.get("arguments") or call.get("args") or {}

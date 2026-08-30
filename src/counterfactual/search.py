@@ -205,7 +205,8 @@ class CounterfactualSearch:
                     model = self.classifier
                     model.eval()
                     with torch.no_grad():
-                        out = model(data.x, data.edge_index)
+                        edge_attr = data.edge_attr if hasattr(data, "edge_attr") and data.edge_attr.numel() > 0 else None
+                        out = model(data.x, data.edge_index, edge_attr=edge_attr)
                         prob = float(torch.sigmoid(out).item())
             except Exception as exc:
                 logger.warning("Unable to score edited graph: %s", exc)

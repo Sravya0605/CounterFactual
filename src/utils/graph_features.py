@@ -2,7 +2,6 @@
 import math
 from collections import Counter
 from typing import Any, List
-from datetime import datetime
 
 import pandas as pd
 
@@ -17,10 +16,6 @@ def _node_api_sequence(G) -> List[str]:
         try:
             return normalize_timestamp(timestamps[0])
         except ValueError:
-            # Explicit, visible fallback -- an unparseable timestamp sorts
-            # this node last rather than crashing feature extraction, but
-            # unlike the old version this is a deliberate, named decision
-            # at one call site, not a silently duplicated implementation.
             return float("inf")
 
     nodes = sorted(G.nodes(), key=timestamp_key)
@@ -34,17 +29,9 @@ def graph_to_api_counts(G) -> Counter:
         counts[api] += int(data.get("count", 1))
     return counts
 
+
 def graph_to_normalized_api_features(G) -> Counter:
-    """Return each API's share of total API call volume, instead of a raw
-    count. Raw counts let a single high-volume feature dominate a shallow
-    classifier's decisions regardless of what fraction of behavior it
-    actually represents (confirmed directly: 2026-08-18 findings --
-    createtoolhelp32snapshot's raw count became the sole decision feature
-    for an agenttesla-vs-qbot classifier, with no correctly-classified
-    sample anywhere near its learned threshold). Normalizing by total
-    volume gives the model a graded signal that isn't just "how active
-    was this sample overall."
-    """
+    """Normalize API counts by total observed volume to prevent one-hot API dominance."""
     raw_counts = graph_to_api_counts(G)
     total = sum(raw_counts.values())
     normalized: Counter = Counter()
@@ -53,6 +40,14 @@ def graph_to_normalized_api_features(G) -> Counter:
     for api, count in raw_counts.items():
         normalized[f"ratio_{api}"] = round(count / total, 6)
     return normalized
+
+
+def graph_to_sublinear_api_features(G) -> Counter:
+    """Apply sqrt/log scaling so repeated loops do not swamp rare but meaningful events."""
+    sublinear: Counter = Counter()
+    for api, count in graph_to_api_counts(G).items():
+        sublinear[f"log1p_{api}"] = round(math.log1p(float(count)), 6)
+    return sublinear
 
 
 def graph_to_ngram_features(G, n: int = 2) -> Counter:
@@ -67,8 +62,10 @@ def graph_to_ngram_features(G, n: int = 2) -> Counter:
 def graph_to_edge_features(G) -> Counter:
     counts: Counter = Counter()
     for _, _, data in G.edges(data=True):
-        edge_type = data.get("type", "unknown")
+        edge_type = str(data.get("type", "unknown")).lower()
         counts[f"edge_{edge_type}"] += 1
+        if "weight" in data:
+            counts[f"edge_weight_{edge_type}"] += float(data.get("weight", 0.0))
     return counts
 
 
@@ -98,6 +95,8 @@ def build_feature_vocab(graphs: List[Any]) -> List[str]:
     for G in graphs:
         features = Counter()
         features.update(graph_to_api_counts(G))
+        features.update(graph_to_normalized_api_features(G))
+        features.update(graph_to_sublinear_api_features(G))
         features.update({f"ngram_{'_'.join(gram)}": value for gram, value in graph_to_ngram_features(G).items()})
         features.update(graph_to_edge_features(G))
         features.update(graph_to_entropy_features(G))
@@ -111,6 +110,8 @@ def graph_list_to_bow(graphs: List[Any], vocab: List[str] = None) -> pd.DataFram
     for G in graphs:
         features = Counter()
         features.update(graph_to_api_counts(G))
+        features.update(graph_to_normalized_api_features(G))
+        features.update(graph_to_sublinear_api_features(G))
         features.update({f"ngram_{'_'.join(gram)}": value for gram, value in graph_to_ngram_features(G).items()})
         features.update(graph_to_edge_features(G))
         features.update(graph_to_entropy_features(G))

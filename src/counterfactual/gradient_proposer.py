@@ -21,7 +21,8 @@ def node_importance_via_gradients(model: Any, G: nx.DiGraph, api_vocab: Any = No
 
     model.eval()
     with torch.enable_grad():
-        out = model(x, data.edge_index)
+        edge_attr = data.edge_attr if hasattr(data, "edge_attr") and data.edge_attr.numel() > 0 else None
+        out = model(x, data.edge_index, edge_attr=edge_attr)
         if out.dim() == 0:
             out = out.unsqueeze(0)
         loss = torch.sigmoid(out).sum()

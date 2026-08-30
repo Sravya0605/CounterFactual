@@ -3,6 +3,10 @@
   "graph_nodes": 5,
   "graph_edges": 7,
   "result": {
-    "status": "no_flip_found"
+    "status": "not_malicious",
+    "candidate": null,
+    "edited_graph": null,
+    "orig_prob": 0.4333,
+    "new_prob": null
   }
 }

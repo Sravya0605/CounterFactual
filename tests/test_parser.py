@@ -11,8 +11,8 @@ from src.counterfactual.search import CounterfactualSearch
 from src.classifier.heuristic_model import HeuristicClassifier
 from src.graph.graph_builder import build_behavior_graph
 from src.ingestion.parser import parse_cape_json
-from src.utils.graph_features import graph_list_to_bow
-from src.utils.pyg_adapter import build_api_vocab
+from src.utils.graph_features import graph_list_to_bow, graph_to_normalized_api_features, graph_to_sublinear_api_features
+from src.utils.pyg_adapter import build_api_vocab, graph_to_pyg_data
 
 
 class ParserGraphTest(unittest.TestCase):
@@ -218,6 +218,40 @@ class ParserGraphTest(unittest.TestCase):
         from src.ingestion.parser import _looks_like_resource_key
         for key in ("file_path", "target_filename", "source_path", "dest_ip", "DomainName", "TargetPath"):
             self.assertTrue(_looks_like_resource_key(key), f"expected {key!r} to match")
+
+    def test_graph_features_include_normalized_and_sublinear_signals(self):
+        G = nx.DiGraph()
+        G.add_node("n1", api="CreateFile", count=8)
+        G.add_node("n2", api="WriteFile", count=2)
+        G.add_edge("n1", "n2", type="temporal")
+
+        ratio = graph_to_normalized_api_features(G)
+        sublinear = graph_to_sublinear_api_features(G)
+        self.assertIn("ratio_createfile", ratio)
+        self.assertIn("log1p_createfile", sublinear)
+        self.assertGreater(sublinear["log1p_createfile"], 0.0)
+        self.assertLessEqual(sum(ratio.values()), 1.0 + 1e-9)
+
+    def test_pyg_adapter_exports_richer_edge_attributes(self):
+        G = nx.DiGraph()
+        G.add_node("n1", api="CreateFile", count=2, entity_type="file")
+        G.add_node("n2", api="WriteFile", count=3, entity_type="file")
+        G.add_edge("n1", "n2", type="temporal", weight=4, delay=0.5)
+
+        vocab = build_api_vocab([G])
+        data = graph_to_pyg_data(G, vocab)
+        self.assertEqual(data.x.shape[0], 2)
+        self.assertGreaterEqual(data.edge_attr.shape[1], 3)
+
+    def test_lgbm_training_returns_calibrated_probabilities(self):
+        from src.classifier.lgbm_model import train_lgbm, predict_proba
+
+        X = [{"createfile": 5, "regsetvalue": 0}, {"createfile": 1, "regsetvalue": 5}]
+        y = [0, 1]
+        model = train_lgbm(X, y, calibrate=True)
+        probs = predict_proba(model, X)
+        self.assertEqual(len(probs), 2)
+        self.assertTrue(all(0.0 < p < 1.0 for p in probs))
 
 
     def test_entity_type_resource_reserved_for_lifetime_nodes_only(self):
