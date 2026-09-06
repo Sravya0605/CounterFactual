@@ -14,7 +14,7 @@ import networkx as nx
 ANCHOR_FAMILY = {
     "enum": ["OpenProcess", "QueryProcess", "ReadProcessMemory"],
     "query": ["OpenProcess", "QueryInformation"],
-    "process": ["CreateRemoteThread", "OpenProcess"],
+    "openprocess": ["CreateRemoteThread", "OpenProcess"],
 }
 
 
@@ -54,17 +54,24 @@ def is_anchor_plausible(G: nx.DiGraph, anchor_node: str, inserted_api: str) -> b
     """
     if anchor_node not in G:
         return False
+    allowed = {
+        candidate
+        for candidates in ANCHOR_FAMILY.values()
+        for candidate in candidates
+    }
+    if inserted_api not in allowed:
+        return False
     # Look at neighbor APIs in the same process lineage.
     # If any nearby API contains tokens that match ANCHOR_FAMILY keys,
     # accept the insertion. Otherwise reject conservatively.
     for pred in list(G.predecessors(anchor_node)) + list(G.successors(anchor_node)):
         api = G.nodes[pred].get("api", "")
-        for token in ANCHOR_FAMILY.keys():
-            if token in (api or "").lower():
+        for token, candidates in ANCHOR_FAMILY.items():
+            if inserted_api in candidates and token in (api or "").lower():
                 return True
     # Also check the anchor node itself.
     api = G.nodes[anchor_node].get("api", "")
-    for token in ANCHOR_FAMILY.keys():
-        if token in (api or "").lower():
+    for token, candidates in ANCHOR_FAMILY.items():
+        if inserted_api in candidates and token in (api or "").lower():
             return True
     return False

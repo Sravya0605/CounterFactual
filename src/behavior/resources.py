@@ -29,6 +29,9 @@ RESOURCE_RELEASES = {
     "NtReleaseMutant": "Handle",
 }
 
+OPENING_API_TOKENS = {"createfile", "createprocess", "regcreatekey", "socket", "createservice"}
+CLOSING_API_TOKENS = {"closehandle", "deletefile", "regdeletekey", "regdeletevalue", "terminateprocess", "closesocket"}
+
 
 def extract_acquisition(event):
     """
@@ -66,7 +69,9 @@ def extract_acquisition(event):
 
     handle = None
 
-    for arg in arguments:
+    for arg in arguments if isinstance(arguments, list) else []:
+        if not isinstance(arg, dict):
+            continue
         if arg.get("name") == handle_arg:
             handle = arg.get("value")
             break
@@ -104,7 +109,9 @@ def extract_release(event):
 
     handle = None
 
-    for arg in arguments:
+    for arg in arguments if isinstance(arguments, list) else []:
+        if not isinstance(arg, dict):
+            continue
         if arg.get("name") == handle_arg:
             handle = arg.get("value")
             break

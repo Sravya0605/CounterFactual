@@ -39,7 +39,7 @@ orig_prob = predict(G)
 print(f'Sample {TARGET_MD5}: original P(agenttesla) = {orig_prob:.4f}')
 
 # Constrained (feasibility-checked) search
-search = CounterfactualSearch(classifier=None, graph=G)
+search = CounterfactualSearch(graph=G)
 best_cost = None
 best_cand = None
 best_prob = None

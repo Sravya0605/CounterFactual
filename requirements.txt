@@ -7,3 +7,4 @@ scikit-learn
 lightgbm
 tqdm
 python-dateutil
+psutil

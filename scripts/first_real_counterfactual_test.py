@@ -14,8 +14,8 @@ harness = ClassifierHarness(backend='lgbm', model_path='models/emotet_binary_lgb
 prob = harness.predict_proba([G])[0]
 print(f'Original P(emotet) = {prob:.4f}')
 
-search = CounterfactualSearch(classifier=harness, graph=G)
-result = search.run()
+search = CounterfactualSearch(graph=G)
+result = search.generate()
 
 print('')
 print('--- SEARCH RESULT ---')

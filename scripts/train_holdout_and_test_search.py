@@ -57,8 +57,8 @@ print(f'Most borderline held-out sample: {test_md5s[best_idx]} P(emotet)={test_p
 
 # Run the counterfactual search on it
 G_test = test_graphs[best_idx]
-search = CounterfactualSearch(classifier=harness, graph=G_test)
-result = search.run()
+search = CounterfactualSearch(graph=G_test)
+result = search.generate()
 print('')
 print('--- SEARCH RESULT on held-out sample ---')
 print('status:', result.get('status'))

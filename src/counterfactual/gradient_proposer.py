@@ -10,6 +10,7 @@ import networkx as nx
 import torch
 
 from src.utils.pyg_adapter import build_api_vocab, graph_to_pyg_data
+from src.counterfactual.substitutions import get_substitutes
 
 
 def node_importance_via_gradients(model: Any, G: nx.DiGraph, api_vocab: Any = None) -> List[float]:
@@ -25,7 +26,7 @@ def node_importance_via_gradients(model: Any, G: nx.DiGraph, api_vocab: Any = No
         out = model(x, data.edge_index, edge_attr=edge_attr)
         if out.dim() == 0:
             out = out.unsqueeze(0)
-        loss = torch.sigmoid(out).sum()
+        loss = -torch.sigmoid(out).sum()
         loss.backward()
         grads = x.grad
         scores = grads.norm(p=2, dim=1).tolist()
@@ -46,6 +47,8 @@ def propose_from_gradients(model: Any, G: nx.DiGraph, top_k: int = 10, api_vocab
     for idx in ranked[:top_k]:
         n = nodes[idx]
         cands.append({"delete_nodes": [n], "substitute": {}})
+        for substitute in get_substitutes(G.nodes[n].get("api")):
+            cands.append({"delete_nodes": [], "substitute": {n: substitute}})
 
     # pairwise combinations among top-5
     pair_count = min(5, top_k)
