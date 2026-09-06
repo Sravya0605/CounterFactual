@@ -1,4 +1,4 @@
-﻿import csv
+import csv
 import os
 import random
 import warnings
@@ -13,8 +13,34 @@ from src.counterfactual.search import CounterfactualSearch
 from src.counterfactual.feasibility import validate_candidate, candidate_cost
 
 # Use the full training batch (streamed) and process one report at a time.
-CSV_PATH = 'data/training_batch_full.csv'
+CSV_PATH = 'data/training_batch_redline_vbclone.csv'
+SOURCE_CSV_PATH = 'data/training_batch.csv'
+POSITIVE_FAMILY = 'redline'
 reports_dir = 'data/training_reports'
+
+
+def ensure_pair_csv():
+    if os.path.exists(CSV_PATH):
+        return
+
+    with open(SOURCE_CSV_PATH, newline='', encoding='utf-8') as source:
+        rows = list(csv.DictReader(source))
+
+    pair_families = {'redline', 'vbclone'}
+    pair_rows = [
+        row for row in rows
+        if row.get('avclass_family', '').strip().lower() in pair_families
+    ]
+    if not pair_rows:
+        raise FileNotFoundError(
+            f'No redline/vbclone rows found in {SOURCE_CSV_PATH}'
+        )
+
+    with open(CSV_PATH, 'w', newline='', encoding='utf-8') as target:
+        writer = csv.DictWriter(target, fieldnames=rows[0].keys())
+        writer.writeheader()
+        writer.writerows(pair_rows)
+    print(f'Created {CSV_PATH} from {SOURCE_CSV_PATH} ({len(pair_rows)} rows)')
 
 
 def stream_graphs(rows):
@@ -29,7 +55,7 @@ def stream_graphs(rows):
         try:
             events = parse_cape_json(path)
             G = build_behavior_graph(events)
-            yield G, (1 if family.lower() == 'emotet' else 0), md5, family, None
+            yield G, (1 if family.lower() == POSITIVE_FAMILY else 0), md5, family, None
         except Exception as exc:
             yield None, None, md5, family, f'parse error: {exc}'
 
@@ -47,9 +73,9 @@ def minimality_check(candidate, graph, harness):
         sub = {"delete_nodes": [n], "substitute": {}}
         if not validate_candidate(graph, sub):
             continue
-        edited = CounterfactualSearch(classifier=harness, graph=graph)._apply_candidate(sub)
+        edited = CounterfactualSearch(graph=graph)._apply_candidate(sub)
         new_prob = float(harness.predict_proba([edited])[0])
-        if new_prob < CounterfactualSearch(classifier=harness, graph=graph).threshold:
+        if new_prob < CounterfactualSearch(graph=graph).threshold:
             return False
     # Check single substitutions
     subs = (candidate.get("substitute", {}) or {}).items()
@@ -57,15 +83,16 @@ def minimality_check(candidate, graph, harness):
         sub = {"delete_nodes": [], "substitute": {node: api}}
         if not validate_candidate(graph, sub):
             continue
-        edited = CounterfactualSearch(classifier=harness, graph=graph)._apply_candidate(sub)
+        edited = CounterfactualSearch(graph=graph)._apply_candidate(sub)
         new_prob = float(harness.predict_proba([edited])[0])
-        if new_prob < CounterfactualSearch(classifier=harness, graph=graph).threshold:
+        if new_prob < CounterfactualSearch(graph=graph).threshold:
             return False
     return True
 
 
 def run_single_seed(seed):
     # Stream CSV rows rather than loading everything into memory.
+    ensure_pair_csv()
     with open(CSV_PATH, newline='', encoding='utf-8') as f:
         all_rows = list(csv.DictReader(f))
 
@@ -88,7 +115,7 @@ def run_single_seed(seed):
         train_graphs.append(G)
         train_labels.append(label)
 
-    harness = ClassifierHarness(backend='lgbm', model_path='models/emotet_binary_holdout_lgbm.pkl')
+    harness = ClassifierHarness(backend='lgbm', model_path='models/redline_vbclone_holdout_lgbm.pkl')
     harness.train(
         train_graphs,
         train_labels,
@@ -112,19 +139,23 @@ def run_single_seed(seed):
             records.append({'md5': md5, 'candidate_cost': None, 'orig_prob': None, 'status': 'skipped', 'error': err})
             continue
         prob = float(harness.predict_proba([G])[0])
-        search = CounterfactualSearch(classifier=harness, graph=G)
-        # Constrained run
-        result = search.run()
+        search = CounterfactualSearch(graph=G)
+        # Generate first; classifier scoring remains an explicit outer step.
+        result = search.generate()
         status = result.get('status')
         cand = result.get('candidate')
         cost = candidate_cost(cand) if cand is not None else None
         is_minimal = minimality_check(cand, G, harness)
         records.append({'md5': md5, 'candidate_cost': cost, 'orig_prob': prob, 'status': status, 'is_minimal': is_minimal})
-        if status == 'completed':
-            constrained_completed += 1
+        if status == 'completed' and cand is not None:
+            edited = search._apply_candidate(cand)
+            new_prob = float(harness.predict_proba([edited])[0])
+            records[-1]['new_prob'] = new_prob
+            if prob >= search.threshold and new_prob < search.threshold:
+                constrained_completed += 1
 
         # Unconstrained baseline: same proposer but no feasibility checks.
-        search_uncon = CounterfactualSearch(classifier=harness, graph=G)
+        search_uncon = CounterfactualSearch(graph=G)
         search_uncon.enforce_feasibility = False
         best_cost = None
         best_cand = None

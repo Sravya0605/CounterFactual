@@ -74,7 +74,12 @@ def stream_build_features(rows):
             continue
 
         size_mb = os.path.getsize(path) / (1024 * 1024)
-        events = parse_cape_json(path)
+        try:
+            events = parse_cape_json(path)
+        except (ValueError, UnicodeError) as exc:
+            skipped.append((md5, f'malformed report: {exc}'))
+            print(f'  SKIPPED {md5}: malformed report ({exc})')
+            continue
         G = build_behavior_graph(events)
         counter = extract_feature_counter(G)
 
@@ -119,14 +124,22 @@ if __name__ == '__main__':
     print(f'Peak RSS since process start: not available on Windows (resource module is Unix-only); using psutil peak instead where tracked separately if needed')
     
     # ---- Step 3: binary reframe, 80/20 split ----
+    unique_fams = sorted(set(labels))
     if FRAMING == 'agenttesla_vs_qbot':
         keep = [i for i, fam in enumerate(labels) if fam in ('agenttesla', 'qbot')]
         print(f'FRAMING=agenttesla_vs_qbot: excluding emotet entirely, keeping {len(keep)}/{len(labels)} samples')
         feature_counters = [feature_counters[i] for i in keep]
         binary_labels = [1 if labels[i] == 'agenttesla' else 0 for i in keep]
         md5s = [md5s[i] for i in keep]
+    elif len(unique_fams) == 2:
+        pos_fam = unique_fams[0]
+        neg_fam = unique_fams[1]
+        print(f'Auto-detected binary framing: {pos_fam} (1) vs {neg_fam} (0)')
+        binary_labels = [1 if fam == pos_fam else 0 for fam in labels]
     else:
-        binary_labels = [1 if fam == 'emotet' else 0 for fam in labels]
+        target = FRAMING if FRAMING in unique_fams else (unique_fams[0] if unique_fams else 'emotet')
+        print(f'Binary framing: {target} (1) vs rest (0)')
+        binary_labels = [1 if fam == target else 0 for fam in labels]
 
     indices = list(range(len(feature_counters)))
     random.Random(SPLIT_SEED).shuffle(indices)

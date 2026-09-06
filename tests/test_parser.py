@@ -32,11 +32,13 @@ class ParserGraphTest(unittest.TestCase):
     def test_search_propose_and_run(self):
         evts = parse_cape_json(self.sample)
         G = build_behavior_graph(evts)
-        cs = CounterfactualSearch(classifier=None, graph=G)
-        cand = cs.run()
-        # with classifier=None run returns first valid candidate dict
+        cs = CounterfactualSearch(graph=G)
+        cand = cs.generate()
         self.assertIsNotNone(cand)
         self.assertIn("candidate", cand)
+        self.assertEqual(cand["status"], "candidates_available")
+        self.assertIsNone(cand["candidate"])
+        self.assertTrue(cand["feasible_candidates"])
 
     def test_engine_explain_writes_report(self):
         engine = CounterfactualEngine(classifier_backend="heuristic")
@@ -108,7 +110,7 @@ class ParserGraphTest(unittest.TestCase):
         edited = apply_candidate(G, {"delete_nodes": [], "substitute": {"n1": "CreateFile"}})
         self.assertEqual(edited.nodes["n1"]["resources"], ["createfile:foo"])
 
-        search = CounterfactualSearch(classifier=None, graph=G)
+        search = CounterfactualSearch(graph=G)
         self.assertEqual(search._downstream_cascade("n1"), ["n2", "n3"])
 
     def test_lgbm_harness_trains_and_persists_model(self):
@@ -125,17 +127,129 @@ class ParserGraphTest(unittest.TestCase):
             self.assertTrue(model_path.exists())
             self.assertIsNotNone(harness.model)
 
-    def test_search_returns_not_malicious_status_when_initial_prob_below_threshold(self):
-        class StubClassifier:
-            def predict_proba(self, graphs):
-                return [0.4]
-
+    def test_search_reports_when_no_structural_edit_is_feasible(self):
         G = nx.DiGraph()
         G.add_node("n1", api="CreateFile")
-        search = CounterfactualSearch(classifier=StubClassifier(), graph=G)
-        result = search.run()
-        self.assertEqual(result["status"], "not_malicious")
+        search = CounterfactualSearch(graph=G)
+        result = search.generate()
+        self.assertEqual(result["status"], "no_feasible_candidate")
         self.assertIsNone(result["candidate"])
+
+    def test_search_requires_classifier_flip_before_selecting_counterfactual(self):
+        class NonFlippingClassifier:
+            def predict_proba(self, graphs):
+                return [0.9]
+
+        G = nx.DiGraph()
+        G.add_node("proc:1", api="process", entity_type="process")
+        G.add_node("n1", api="CreateFile")
+        G.add_edge("proc:1", "n1", type="process")
+        result = CounterfactualSearch(graph=G).find_flip(NonFlippingClassifier())
+        self.assertEqual(result["status"], "no_flip_found")
+        self.assertIsNone(result["candidate"])
+
+    def test_search_selects_only_a_classifier_confirmed_flip(self):
+        class FlipOnDeletionClassifier:
+            def predict_proba(self, graphs):
+                return [0.9 if graphs[0].number_of_nodes() > 1 else 0.1]
+
+        G = nx.DiGraph()
+        G.add_node("proc:1", api="process", entity_type="process")
+        G.add_node("n1", api="CreateFile")
+        G.add_edge("proc:1", "n1", type="process")
+        result = CounterfactualSearch(graph=G).find_flip(FlipOnDeletionClassifier())
+        self.assertEqual(result["status"], "completed")
+        self.assertEqual(result["candidate"]["delete_nodes"], ["n1"])
+
+    def test_resource_lifetime_close_socket_is_not_an_open(self):
+        from src.counterfactual.feasibility import _check_resource_lifetime
+
+        G = nx.DiGraph()
+        G.add_node("open", api="Socket", resources=["S"], timestamps=[1])
+        G.add_node("close", api="CloseSocket", resources=["S"], timestamps=[2])
+        G.add_node("use", api="Send", resources=["S"], timestamps=[3])
+        self.assertFalse(_check_resource_lifetime(G))
+
+    def test_resource_lifetime_recognizes_real_ntclose_api(self):
+        from src.counterfactual.feasibility import _check_resource_lifetime
+
+        G = nx.DiGraph()
+        G.add_node("open", api="NtCreateFile", resources=["H"], timestamps=[1])
+        G.add_node("close", api="NtClose", resources=["H"], timestamps=[2])
+        G.add_node("use", api="NtWriteFile", resources=["H"], timestamps=[3])
+        self.assertFalse(_check_resource_lifetime(G))
+
+    def test_insertion_validator_rejects_unlisted_api_and_preserves_process(self):
+        G = nx.DiGraph()
+        G.add_node("proc:1", api="process", entity_type="process", process_id="1")
+        G.add_node("anchor", api="EnumProcesses", entity_type="process", process_id="1")
+        G.add_edge("proc:1", "anchor", type="process")
+
+        invalid = {"insert_nodes": [{"anchor": "anchor", "api": "FormatCDrive"}]}
+        self.assertFalse(validate_candidate(G, invalid))
+
+        valid = {"insert_nodes": [{"anchor": "anchor", "api": "OpenProcess"}]}
+        edited = apply_candidate(G, valid)
+        inserted = [node for node in edited if node.startswith("__insert__")][0]
+        self.assertEqual(edited.nodes[inserted]["process_id"], "1")
+        self.assertEqual(edited.nodes[inserted]["entity_type"], "process")
+        self.assertTrue(validate_candidate(G, valid))
+
+    def test_capa_uses_node_attack_ids_without_false_fallback(self):
+        from src.counterfactual.capa import infer_capa_techniques
+
+        G = nx.DiGraph()
+        G.add_node("n1", api="RegSetValueExA", attack_id="T1547")
+        self.assertEqual(infer_capa_techniques(G)[0]["technique"], "T1547")
+        self.assertEqual(infer_capa_techniques(nx.DiGraph()), [])
+
+    def test_single_edge_and_substitution_flips_are_decoys(self):
+        from src.counterfactual.metrics import detect_decoy_flips
+
+        G = nx.DiGraph()
+        G.add_node("a", api="CreateFile")
+        G.add_node("b", api="WriteFile")
+        G.add_edge("a", "b", type="temporal")
+        edge_edit = {"delete_edges": [("a", "b")], "delete_nodes": [], "substitute": {}}
+        edited = apply_candidate(G, edge_edit)
+        self.assertTrue(detect_decoy_flips(G, edited, edge_edit, orig_prob=0.9, new_prob=0.1))
+
+    def test_deleted_argument_producer_invalidates_surviving_consumer(self):
+        G = nx.DiGraph()
+        G.add_node("producer", api="CreateFile", resources=["0xA"], arguments=[[{"name": "FileHandle", "value": "0xA"}]])
+        G.add_node("consumer", api="WriteFile", resources=["0xA"], arguments=[[{"name": "FileHandle", "value": "0xA"}]])
+        G.add_edge("producer", "consumer", type="resource")
+        self.assertFalse(validate_candidate(G, {"delete_nodes": ["producer"]}))
+
+    def test_child_process_requires_creation_event(self):
+        G = nx.DiGraph()
+        G.add_node("proc:1", api="process", entity_type="process", process_id=1)
+        G.add_node("proc:2", api="process", entity_type="process", process_id=2, parent_process_id=1)
+        G.add_node("create", api="CreateProcessW", entity_type="process", process_id=2)
+        G.add_edge("proc:1", "proc:2", type="process_creation")
+        G.add_edge("proc:2", "create", type="process")
+        self.assertFalse(validate_candidate(G, {"delete_nodes": ["create"]}))
+
+    def test_generate_candidates_reports_constraint_comparison(self):
+        G = nx.DiGraph()
+        G.add_node("n1", api="CreateFile")
+        result = CounterfactualSearch(graph=G).generate_candidates()
+        comparison = result["constraint_comparison"]
+        self.assertEqual(comparison["proposed"], comparison["feasible"] + comparison["infeasible"])
+
+    def test_search_proposes_edge_and_pair_edits(self):
+        G = nx.DiGraph()
+        G.add_node("proc:1", api="process", entity_type="process")
+        G.add_node("n1", api="CreateService", entity_type="persistence")
+        G.add_node("n2", api="CreateRemoteThread", entity_type="process")
+        G.add_node("n3", api="WriteFile", entity_type="file")
+        G.add_edge("proc:1", "n1", type="process")
+        G.add_edge("proc:1", "n2", type="process")
+        G.add_edge("n1", "n3", type="temporal")
+
+        candidates = CounterfactualSearch(graph=G).propose()
+        self.assertTrue(any(len(c.get("delete_nodes", [])) == 2 for c in candidates))
+        self.assertTrue(any(c.get("delete_edges") for c in candidates))
 
     def test_gnn_harness_trains_and_scores_single_graph(self):
         from src.classifier.gnn_harness import predict_gnn_proba, train_gnn
@@ -162,6 +276,51 @@ class ParserGraphTest(unittest.TestCase):
             calls = payload["behavior"]["processes"][0]["calls"]
             self.assertEqual(calls[0]["api"], "CreateFile")
             self.assertEqual(len(calls), 1)
+
+    def test_tier2_round_trip_skips_resource_nodes_and_preserves_counts(self):
+        G = nx.DiGraph()
+        G.add_node("proc:1000", api="process", entity_type="process", process_id="1000")
+        G.add_node(
+            "n0",
+            api="WriteFile",
+            entity_type="file",
+            process_id="1000",
+            resources=["C:\\temp\\foo.txt"],
+            count=2,
+        )
+        G.add_node(
+            "resource:file:0x1:1",
+            entity_type="resource",
+            process_id="1000",
+            acquisition_api="NtOpenFile",
+            handle="0x1",
+        )
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            out_path = Path(tmpdir) / "synthetic.json"
+            generate_synthetic_cape_report(G, str(out_path))
+            payload = json.loads(out_path.read_text(encoding="utf-8"))
+            calls = payload["behavior"]["processes"][0]["calls"]
+            self.assertEqual([call["api"] for call in calls], ["WriteFile", "WriteFile"])
+            self.assertTrue(all(call["api"] != "unknown" for call in calls))
+            self.assertEqual(calls[0]["arguments"]["path"], "C:\\temp\\foo.txt")
+
+    def test_synthetic_counterfactual_reports_preserve_repeated_calls(self):
+        payload = {
+            "counterfactual_metadata": {"synthetic": True},
+            "behavior": {"processes": [{"pid": 1, "calls": [
+                {"api": "LdrLoadDll", "timestamp": 1, "arguments": {}},
+                {"api": "LdrLoadDll", "timestamp": 2, "arguments": {}},
+                {"api": "LdrLoadDll", "timestamp": 3, "arguments": {}},
+                {"api": "LdrLoadDll", "timestamp": 4, "arguments": {}},
+                {"api": "LdrLoadDll", "timestamp": 5, "arguments": {}},
+                {"api": "LdrLoadDll", "timestamp": 6, "arguments": {}},
+            ]}]},
+        }
+        with tempfile.TemporaryDirectory() as tmpdir:
+            out_path = Path(tmpdir) / "synthetic.json"
+            out_path.write_text(json.dumps(payload), encoding="utf-8")
+            self.assertEqual(len(parse_cape_json(str(out_path))), 6)
 
 
     def test_resource_lifetime_rejects_use_after_close(self):
@@ -213,6 +372,14 @@ class ParserGraphTest(unittest.TestCase):
         ]
         result = _classify_event("NtOpenFile", args)
         self.assertIn("C:\\Windows\\System32\\uxtheme.dll", result["resources"])
+
+    def test_classify_event_preserves_handle_references_for_data_flow(self):
+        from src.ingestion.parser import _classify_event
+
+        args = [{"name": "FileHandle", "value": "0x0000022c"}]
+        result = _classify_event("WriteFile", args)
+
+        self.assertIn("0x0000022c", result["resources"])
 
     def test_looks_like_resource_key_matches_compound_names(self):
         from src.ingestion.parser import _looks_like_resource_key
@@ -292,6 +459,15 @@ class ParserGraphTest(unittest.TestCase):
         self.assertIsNotNone(result)
         self.assertEqual(result["handle"], "0x0000AAAA")
 
+    def test_resource_matching_tolerates_dictionary_arguments(self):
+        from src.behavior.resources import extract_release
+
+        event = {
+            "api": "NtClose",
+            "args": {"path": "0x0000AAAA"},
+        }
+        self.assertIsNone(extract_release(event))
+
     def test_propose_generates_single_node_candidates_for_full_graph_not_just_early_nodes(self):
         import networkx as nx
         from src.counterfactual.search import CounterfactualSearch
@@ -308,7 +484,7 @@ class ParserGraphTest(unittest.TestCase):
             G.add_edge(prev, node_id, type="process")
             prev = node_id
 
-        search = CounterfactualSearch(classifier=None, graph=G)
+        search = CounterfactualSearch(graph=G)
         candidates = search.propose()
 
         single_node_targets = {
@@ -326,6 +502,66 @@ class ParserGraphTest(unittest.TestCase):
             max_index_seen, 250,
             "single-node candidates should reach well past node 250 with random sampling"
         )
+
+    def test_search_proposes_complete_dependency_closure_after_single_edits(self):
+        G = nx.DiGraph()
+        G.add_node("n0", api="CreateFile", entity_type="file", resources=["R"], timestamps=[1])
+        G.add_node("n1", api="WriteFile", entity_type="file", resources=["R"], timestamps=[2])
+        G.add_node("n2", api="CloseHandle", entity_type="file", resources=["R"], timestamps=[3])
+        G.add_edge("n0", "n1", type="resource")
+        G.add_edge("n1", "n2", type="resource")
+
+        search = CounterfactualSearch(graph=G)
+        closure = search._closure_candidate("n0")
+
+        self.assertIsNotNone(closure)
+        self.assertEqual(set(closure["delete_nodes"]), {"n0", "n1", "n2"})
+
+    def test_search_trace_is_cost_ordered_and_records_runtime(self):
+        class StubClassifier:
+            def predict_proba(self, graphs):
+                return [0.9 if graphs[0].number_of_nodes() >= 2 else 0.1]
+
+        G = nx.DiGraph()
+        G.add_node("n0", api="CreateFile")
+        G.add_node("n1", api="WriteFile")
+        search = CounterfactualSearch(graph=G)
+        result = search.find_flip(StubClassifier())
+
+        self.assertEqual(result["status"], "completed")
+        self.assertEqual(result["candidate"]["delete_nodes"], ["n0"])
+        self.assertIn("search", result)
+        self.assertIn("runtime_seconds", result["search"])
+        costs = [
+            sum(len(set(item["candidate"].get(key, []) or [])) for key in ("delete_nodes", "delete_edges"))
+            + len(item["candidate"].get("substitute", {}) or {})
+            for item in result["candidate_trace"]
+        ]
+        self.assertEqual(costs, sorted(costs))
+
+    def test_graph_lifetime_mapping_is_process_local(self):
+        events = [
+            {"id": "a", "api": "NtOpenFile", "process_id": "p1", "sequence": 1, "timestamp": 1, "event_type": "file", "resources": []},
+            {"id": "b", "api": "NtOpenFile", "process_id": "p2", "sequence": 1, "timestamp": 1, "event_type": "file", "resources": []},
+            {"id": "c", "api": "NtClose", "process_id": "p1", "sequence": 2, "timestamp": 2, "event_type": "system", "resources": []},
+        ]
+        lifetimes = [{
+            "process_id": "p2",
+            "handle": "0xB",
+            "resource_type": "file",
+            "acquisition_api": "NtOpenFile",
+            "release_api": "NtClose",
+            "acquisition_sequence": 1,
+            "release_sequence": 2,
+        }]
+        graph = build_behavior_graph(events, lifetimes=lifetimes)
+        resource_nodes = [
+            node for node, data in graph.nodes(data=True)
+            if data.get("entity_type") == "resource"
+        ]
+
+        self.assertEqual(len(resource_nodes), 1)
+        self.assertEqual(list(graph.predecessors(resource_nodes[0])), ["n1"])
     
 if __name__ == "__main__":
     unittest.main()

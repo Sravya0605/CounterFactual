@@ -10,16 +10,16 @@ from sklearn.linear_model import LogisticRegression
 DEFAULT_LGBM_PARAMS = {
     "objective": "binary",
     "metric": "binary_logloss",
-    "feature_fraction": 0.6,
+    "feature_fraction": 0.7,
     "bagging_fraction": 0.8,
     "bagging_freq": 1,
-    "min_data_in_leaf": 25,
+    "min_data_in_leaf": 5,
     "max_depth": 5,
-    "num_leaves": 20,
-    "lambda_l1": 1.5,
-    "lambda_l2": 5.0,
-    "min_gain_to_split": 0.02,
-    "learning_rate": 0.03,
+    "num_leaves": 15,
+    "lambda_l1": 0.5,
+    "lambda_l2": 2.0,
+    "min_gain_to_split": 0.0,
+    "learning_rate": 0.05,
     "verbosity": -1,
 }
 

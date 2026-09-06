@@ -5,6 +5,7 @@ from datetime import datetime
 import networkx as nx
 
 from src.counterfactual.substitutions import get_substitutes
+from src.counterfactual.insertions import ANCHOR_FAMILY, is_anchor_plausible
 
 
 def apply_candidate(G: nx.DiGraph, candidate: Dict) -> nx.DiGraph:
@@ -39,22 +40,47 @@ def apply_candidate(G: nx.DiGraph, candidate: Dict) -> nx.DiGraph:
     for ins in insertions:
         anchor = ins.get("anchor")
         api = ins.get("api")
-        entity_type = ins.get("entity_type", "api_call")
+        entity_type = ins.get("entity_type") or _entity_type_for_api(api)
         resources = ins.get("resources", []) or []
         timestamps = ins.get("timestamps", None)
         # Create a stable new node id that won't collide with existing ones.
-        new_node = f"__insert__{anchor}__{ins_idx}"
+        new_node = f"__insert__{ins_idx}"
         ins_idx += 1
         # Timestamp: if anchor has timestamps, place the insertion shortly
         # after the anchor to preserve temporal ordering.
         if timestamps is None and anchor in G2:
             anchor_ts = G2.nodes[anchor].get("timestamps") or []
             timestamps = anchor_ts[:1] if anchor_ts else []
-        G2.add_node(new_node, api=api, entity_type=entity_type, resources=list(resources), timestamps=timestamps)
+        anchor_data = G2.nodes[anchor] if anchor in G2 else {}
+        G2.add_node(
+            new_node,
+            api=api,
+            entity_type=entity_type,
+            process_id=anchor_data.get("process_id"),
+            resources=list(resources),
+            timestamps=timestamps,
+            insertion_anchor=anchor,
+            insertion_index=ins_idx,
+        )
         # Add a temporal edge from anchor -> new_node
         if anchor in G2:
             G2.add_edge(anchor, new_node, type="temporal")
     return G2
+
+
+def _entity_type_for_api(api: str) -> str:
+    normalized = str(api or "").lower()
+    if "reg" in normalized:
+        return "registry"
+    if "service" in normalized or "task" in normalized:
+        return "persistence"
+    if "socket" in normalized or "connect" in normalized:
+        return "network"
+    if "process" in normalized or "thread" in normalized:
+        return "process"
+    if "file" in normalized:
+        return "file"
+    return "unclassified_event"
 
 
 def candidate_cost(candidate: Dict) -> int:
@@ -67,7 +93,11 @@ def candidate_cost(candidate: Dict) -> int:
 
 
 OPENING_API_TOKENS = {"createfile", "createprocess", "regcreatekey", "socket", "createservice"}
-CLOSING_API_TOKENS = {"closehandle", "deletefile", "regdeletekey", "regdeletevalue", "terminateprocess", "closesocket"}
+CLOSING_API_TOKENS = {
+    "closehandle", "ntclose", "regclosekey", "ntreleasemutant",
+    "deletefile", "regdeletekey", "regdeletevalue", "terminateprocess",
+    "closesocket",
+}
 
 
 def _matches_any(api: str, tokens: set) -> bool:
@@ -105,10 +135,10 @@ def _check_resource_lifetime(G2: nx.DiGraph) -> bool:
         events.sort(key=lambda pair: pair[0])
         is_open = True  # implicitly open until we see a close, absent evidence otherwise
         for ts, api in events:
-            if _matches_any(api, OPENING_API_TOKENS):
-                is_open = True
-            elif _matches_any(api, CLOSING_API_TOKENS):
+            if _matches_any(api, CLOSING_API_TOKENS):
                 is_open = False
+            elif _matches_any(api, OPENING_API_TOKENS):
+                is_open = True
             else:
                 if not is_open:
                     return False
@@ -165,6 +195,12 @@ def validate_candidate(G: nx.DiGraph, candidate: Dict) -> bool:
     if not _check_temporal_order(G2):
         return False
 
+    if not _check_argument_data_flow(G, delete_nodes, G2):
+        return False
+
+    if not _check_lifetime_entities(G2):
+        return False
+
     resource_roots = set()
     for node, data in G.nodes(data=True):
         for resource in data.get("resources", []) or []:
@@ -195,20 +231,10 @@ def validate_candidate(G: nx.DiGraph, candidate: Dict) -> bool:
                 continue
             # Allow resources that originate from synthetic insertions if
             # the insertion was explicitly anchored and judged plausible.
-            insertions = candidate.get("insert_nodes", []) or []
-            inserted_node_names = set()
-            for i, ins in enumerate(insertions):
-                anchor = ins.get("anchor")
-                inserted_node_names.add(f"__insert__{anchor}__{i}")
-            if node in inserted_node_names:
+            if G2.nodes[node].get("insertion_anchor") is not None:
                 # Ensure the anchor plausibility rule holds.
                 try:
-                    from src.counterfactual.insertions import is_anchor_plausible
-
-                    # Anchor id encoded in the synthetic node name
-                    parts = node.split("__")
-                    # pattern: ['', 'insert', anchor, idx]
-                    anchor = parts[2] if len(parts) > 2 else None
+                    anchor = G2.nodes[node].get("insertion_anchor")
                     if anchor and is_anchor_plausible(G, anchor, G2.nodes[node].get("api")):
                         continue
                 except Exception:
@@ -222,24 +248,43 @@ def validate_candidate(G: nx.DiGraph, candidate: Dict) -> bool:
         if api not in get_substitutes(original_api):
             return False
 
-    # Validate insertions: anchors must exist and be plausible according to
+    # Validate insertions: anchors and inserted APIs must be plausible according to
     # the insertion heuristics.
     insertions = candidate.get("insert_nodes", []) or []
     if insertions:
-        try:
-            from src.counterfactual.insertions import is_anchor_plausible
-        except Exception:
-            return False
         for ins in insertions:
             anchor = ins.get("anchor")
             api = ins.get("api")
             if anchor not in G.nodes:
+                return False
+            if api not in {candidate_api for values in ANCHOR_FAMILY.values() for candidate_api in values}:
                 return False
             if not is_anchor_plausible(G, anchor, api):
                 return False
 
     process_nodes = [node for node, data in G2.nodes(data=True) if data.get("entity_type") == "process"]
     if process_nodes:
+        for node in process_nodes:
+            child_pid = G2.nodes[node].get("process_id")
+            parent_id = G2.nodes[node].get("parent_process_id")
+            if parent_id is None:
+                continue
+            parent_node = f"proc:{parent_id}"
+            if parent_node not in G2:
+                return False
+            # The creation event is issued by the PARENT process, not the child.
+            # Search for any API-call node whose process_id equals the parent PID
+            # and whose API name is a known process-creation primitive.
+            _creation_apis = {"createprocessw", "createprocessa", "ntcreateuserprocess",
+                              "zwcreateuserprocess", "createprocesswithlogonw",
+                              "createprocesswithtokenw"}
+            creation_events = [
+                event for event, data in G2.nodes(data=True)
+                if str(data.get("process_id", "")) == str(parent_id)
+                and data.get("api", "").lower() in _creation_apis
+            ]
+            if not creation_events:
+                return False
         for node, data in G2.nodes(data=True):
             if data.get("entity_type") == "process":
                 continue
@@ -263,4 +308,39 @@ def validate_candidate(G: nx.DiGraph, candidate: Dict) -> bool:
             if not has_process_ancestor:
                 return False
 
+    return True
+
+
+def _argument_values(data: Dict) -> set:
+    arguments = data.get("arguments") or data.get("args") or []
+    if isinstance(arguments, dict):
+        return {str(value) for value in arguments.values() if value is not None}
+    return {
+        str(argument.get("value"))
+        for argument in arguments
+        if isinstance(argument, dict) and argument.get("value") is not None
+    }
+
+
+def _check_argument_data_flow(G: nx.DiGraph, delete_nodes: set, G2: nx.DiGraph) -> bool:
+    produced = set()
+    for node in delete_nodes:
+        if node not in G:
+            continue
+        data = G.nodes[node]
+        produced.update(str(resource) for resource in data.get("resources", []) or [])
+        produced.update(_argument_values(data))
+    if not produced:
+        return True
+    return not any(_argument_values(data) & produced for _, data in G2.nodes(data=True))
+
+
+def _check_lifetime_entities(G2: nx.DiGraph) -> bool:
+    for node, data in G2.nodes(data=True):
+        if data.get("entity_type") != "resource":
+            continue
+        if not list(G2.predecessors(node)):
+            return False
+        if data.get("state") == "released" and not list(G2.successors(node)):
+            return False
     return True
