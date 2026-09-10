@@ -98,6 +98,8 @@ INSERTION_ANCHORS = {
     },
     "findresourceexa": {
         "findresourceexa", "getmodulehandlea", "getprocaddress",
+        "loadlibraryexw", "findresourceexw", "loadresource",
+        "lockresource", "sizeofresource",
     },
 }
 

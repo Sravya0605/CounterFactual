@@ -425,6 +425,36 @@ class ParserGraphTest(unittest.TestCase):
             "readprocessmemory anchors createtoolhelp32snapshot, not findresourceexa -- should not justify it"
         )
 
+    def test_findresourceexa_insertion_accepted_with_loadlibraryexw_anchor(self):
+        from src.counterfactual.feasibility import validate_candidate
+
+        G = nx.DiGraph()
+        G.add_node("proc:1", api="process", entity_type="process", process_id=1)
+        G.add_node("n0", api="LoadLibraryExW", entity_type="file",
+                   process_id=1, resources=[], count=1, timestamps=[1], sequences=[1])
+        G.add_edge("proc:1", "n0", type="process")
+
+        candidate = {
+            "delete_nodes": [], "substitute": {},
+            "insert_nodes": [{"api": "FindResourceExA", "target_process_id": 1}],
+        }
+        self.assertTrue(validate_candidate(G, candidate))
+
+    def test_findresourceexa_insertion_rejected_with_unrelated_anchor(self):
+        from src.counterfactual.feasibility import validate_candidate
+
+        G = nx.DiGraph()
+        G.add_node("proc:1", api="process", entity_type="process", process_id=1)
+        G.add_node("n0", api="WriteFile", entity_type="file",
+                   process_id=1, resources=[], count=1, timestamps=[1], sequences=[1])
+        G.add_edge("proc:1", "n0", type="process")
+
+        candidate = {
+            "delete_nodes": [], "substitute": {},
+            "insert_nodes": [{"api": "FindResourceExA", "target_process_id": 1}],
+        }
+        self.assertFalse(validate_candidate(G, candidate))
+
     def test_joint_two_feature_insertion_candidate_valid(self):
         from src.counterfactual.feasibility import apply_candidate, validate_candidate
 
