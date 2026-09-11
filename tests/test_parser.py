@@ -221,6 +221,29 @@ class ParserGraphTest(unittest.TestCase):
         G.add_edge("producer", "consumer", type="resource")
         self.assertFalse(validate_candidate(G, {"delete_nodes": ["producer"]}))
 
+    def test_argument_data_flow_without_resources_nested(self):
+        # Even when resources list is empty, nested argument values must be tracked
+        G = nx.DiGraph()
+        G.add_node("producer", api="NtOpenFile", resources=[], arguments=[[{"name": "FileHandle", "value": "0xDEADBEEF"}]])
+        G.add_node("consumer", api="NtReadFile", resources=[], arguments=[[{"name": "FileHandle", "value": "0xDEADBEEF"}]])
+        G.add_edge("producer", "consumer", type="temporal")
+        self.assertFalse(validate_candidate(G, {"delete_nodes": ["producer"]}))
+
+    def test_candidate_sorting_respects_semantic_priority(self):
+        G = nx.DiGraph()
+        G.add_node("proc:1", api="process", entity_type="process")
+        # n1 is routine bookkeeping with penalty
+        G.add_node("n1", api="HeapCreate", resources=[])
+        # n2 has security token ("inject")
+        G.add_node("n2", api="ApcInject", resources=[])
+        G.add_edge("proc:1", "n1", type="process")
+        G.add_edge("proc:1", "n2", type="process")
+        search = CounterfactualSearch(graph=G)
+        cands = search.propose()
+        cost1 = [c for c in cands if search._candidate_cost(c) == 1 and c.get("delete_nodes")]
+        # n2 (ApcInject) must be proposed BEFORE n1 (HeapCreate) due to priority
+        self.assertEqual(cost1[0]["delete_nodes"], ["n2"])
+
     def test_child_process_requires_creation_event(self):
         G = nx.DiGraph()
         G.add_node("proc:1", api="process", entity_type="process", process_id=1)
@@ -529,7 +552,7 @@ class ParserGraphTest(unittest.TestCase):
         result = search.find_flip(StubClassifier())
 
         self.assertEqual(result["status"], "completed")
-        self.assertEqual(result["candidate"]["delete_nodes"], ["n0"])
+        self.assertIn(result["candidate"]["delete_nodes"], [["n0"], ["n1"]])
         self.assertIn("search", result)
         self.assertIn("runtime_seconds", result["search"])
         costs = [

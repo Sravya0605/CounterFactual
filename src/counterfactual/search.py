@@ -77,7 +77,7 @@ class CounterfactualSearch:
             successors = sorted(self.graph.successors(current), key=str, reverse=True)
             for succ in successors:
                 edge_data = self.graph.get_edge_data(current, succ) or {}
-                if edge_data.get("type") not in {"resource", "temporal"}:
+                if edge_data.get("type") not in {"resource", "temporal", "process_creation"}:
                     continue
                 if succ in seen:
                     continue
@@ -97,6 +97,17 @@ class CounterfactualSearch:
             delete_nodes.update(self._downstream_cascade(node))
         candidate = {"delete_nodes": sorted(delete_nodes), "substitute": {}}
         return candidate if self._within_edit_budget(candidate) else None
+
+    def _candidate_priority(self, candidate: Dict) -> float:
+        """Score candidate by semantic priority of affected nodes (higher = better)."""
+        score = 0.0
+        for n in candidate.get("delete_nodes", []) or []:
+            if n in self.graph:
+                score += self._node_priority(n)[0]
+        for n in (candidate.get("substitute", {}) or {}).keys():
+            if n in self.graph:
+                score += self._node_priority(n)[0]
+        return score
 
     @staticmethod
     def _candidate_key(candidate: Dict) -> str:
@@ -191,7 +202,14 @@ class CounterfactualSearch:
         except Exception as exc:
             logger.warning("Insertion proposer failed: %s", exc)
 
-        return sorted(cands, key=lambda candidate: (self._candidate_cost(candidate), self._candidate_key(candidate)))[: self.max_candidates]
+        return sorted(
+            cands,
+            key=lambda candidate: (
+                self._candidate_cost(candidate),
+                -self._candidate_priority(candidate),
+                self._candidate_key(candidate),
+            ),
+        )[: self.max_candidates]
 
     def validate(self, candidate: Dict) -> bool:
         if not self.enforce_feasibility:

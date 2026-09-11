@@ -92,7 +92,13 @@ def candidate_cost(candidate: Dict) -> int:
     return delete_nodes + delete_edges + substitutions + insertions
 
 
-OPENING_API_TOKENS = {"createfile", "createprocess", "regcreatekey", "socket", "createservice"}
+OPENING_API_TOKENS = {
+    "createfile", "openfile", "createprocess", "openprocess",
+    "regcreatekey", "regopenkey", "ntopenkey", "ntcreatekey",
+    "createsection", "opensection", "createmutant", "openmutant",
+    "socket", "createservice", "openscmanager", "loadlibrary", "ldrloaddll",
+    "open", "create", "socket", "connect",
+}
 CLOSING_API_TOKENS = {
     "closehandle", "ntclose", "regclosekey", "ntreleasemutant",
     "deletefile", "regdeletekey", "regdeletevalue", "terminateprocess",
@@ -270,21 +276,23 @@ def validate_candidate(G: nx.DiGraph, candidate: Dict) -> bool:
             if parent_id is None:
                 continue
             parent_node = f"proc:{parent_id}"
-            if parent_node not in G2:
-                return False
-            # The creation event is issued by the PARENT process, not the child.
-            # Search for any API-call node whose process_id equals the parent PID
-            # and whose API name is a known process-creation primitive.
-            _creation_apis = {"createprocessw", "createprocessa", "ntcreateuserprocess",
-                              "zwcreateuserprocess", "createprocesswithlogonw",
-                              "createprocesswithtokenw"}
-            creation_events = [
-                event for event, data in G2.nodes(data=True)
-                if str(data.get("process_id", "")) == str(parent_id)
-                and data.get("api", "").lower() in _creation_apis
-            ]
-            if not creation_events:
-                return False
+            # Only check parent process and creation events if the parent process was modeled in the trace
+            if parent_node in G:
+                if parent_node not in G2:
+                    return False
+                # The creation event is issued by the PARENT process, not the child.
+                # Search for any API-call node whose process_id equals the parent PID
+                # and whose API name is a known process-creation primitive.
+                _creation_apis = {"createprocessw", "createprocessa", "ntcreateuserprocess",
+                                  "zwcreateuserprocess", "createprocesswithlogonw",
+                                  "createprocesswithtokenw"}
+                creation_events = [
+                    event for event, data in G2.nodes(data=True)
+                    if str(data.get("process_id", "")) in {str(parent_id), str(child_pid)}
+                    and str(data.get("api", "")).lower() in _creation_apis
+                ]
+                if not creation_events:
+                    return False
         for node, data in G2.nodes(data=True):
             if data.get("entity_type") == "process":
                 continue
@@ -312,27 +320,53 @@ def validate_candidate(G: nx.DiGraph, candidate: Dict) -> bool:
 
 
 def _argument_values(data: Dict) -> set:
-    arguments = data.get("arguments") or data.get("args") or []
-    if isinstance(arguments, dict):
-        return {str(value) for value in arguments.values() if value is not None}
-    return {
-        str(argument.get("value"))
-        for argument in arguments
-        if isinstance(argument, dict) and argument.get("value") is not None
-    }
+    raw = data.get("arguments") or data.get("args") or []
+    values = set()
+
+    def _collect(item):
+        if item is None:
+            return
+        if isinstance(item, (list, tuple)):
+            for sub in item:
+                _collect(sub)
+        elif isinstance(item, dict):
+            if "value" in item and item["value"] is not None:
+                values.add(str(item["value"]))
+            else:
+                for v in item.values():
+                    _collect(v)
+        else:
+            values.add(str(item))
+
+    _collect(raw)
+    return values
 
 
 def _check_argument_data_flow(G: nx.DiGraph, delete_nodes: set, G2: nx.DiGraph) -> bool:
-    produced = set()
-    for node in delete_nodes:
-        if node not in G:
+    """Ensure that deleting nodes does not leave downstream consumers with dangling arguments.
+
+    A surviving node in G2 is invalid if it consumes an argument or handle that was
+    produced by a deleted node, with no surviving producer to supply it.
+    """
+    for u in delete_nodes:
+        if u not in G:
             continue
-        data = G.nodes[node]
-        produced.update(str(resource) for resource in data.get("resources", []) or [])
-        produced.update(_argument_values(data))
-    if not produced:
-        return True
-    return not any(_argument_values(data) & produced for _, data in G2.nodes(data=True))
+        u_vals = set(str(r) for r in G.nodes[u].get("resources", []) or []) | _argument_values(G.nodes[u])
+        pred_vals = set()
+        for p in G.predecessors(u):
+            pred_vals.update(str(r) for r in G.nodes[p].get("resources", []) or [])
+            pred_vals.update(_argument_values(G.nodes[p]))
+        # Values uniquely introduced/produced by u (not inherited from predecessors)
+        newly_produced = u_vals - pred_vals
+        if not newly_produced:
+            continue
+        # Check if any surviving downstream node in G2 references a value produced by u
+        for succ in G.successors(u):
+            if succ in G2:
+                succ_vals = set(str(r) for r in G2.nodes[succ].get("resources", []) or []) | _argument_values(G2.nodes[succ])
+                if succ_vals & newly_produced:
+                    return False
+    return True
 
 
 def _check_lifetime_entities(G2: nx.DiGraph) -> bool:

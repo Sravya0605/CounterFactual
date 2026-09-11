@@ -55,7 +55,9 @@ _API_RESOURCE_TYPE: Dict[str, str] = {
     # Injection – mapping
     "NtMapViewOfSection":  "mapped_section",
     "MapViewOfFile":       "mapped_section",
-    # File write
+    # File write / create
+    "CreateFile":          "file_path",
+    "NtCreateFile":        "file_path",
     "NtWriteFile":         "file_path",
     "WriteFile":           "file_path",
     # Network/C2
@@ -91,30 +93,20 @@ def update_resources_for_substitution(
     api_name: str,
     original_resources: Optional[List[str]] = None,
 ) -> List[str]:
-    """Return a resource list appropriate for the substituted API.
-
-    Rather than naively prefixing the original resource strings (which
-    produces semantically invalid values such as
-    ``createscheduledtask:HKLM\\...``), we look up the *resource type* of
-    the target API and return a neutral placeholder of that type.  If the
-    original resource list is empty, we return a single placeholder so the
-    substituted node still has a resource slot.
-    """
-    resource_type = _API_RESOURCE_TYPE.get(api_name)
-    if resource_type is None:
-        # Unknown API: fall back to a single generic placeholder rather than
-        # mangling the original values.
-        return [f"{api_name.lower()}:[resource]"] if api_name else []
-
-    placeholder = _RESOURCE_PLACEHOLDER.get(resource_type, f"[{resource_type}]")
-
-    if not original_resources:
-        return [placeholder]
-
-    # Preserve the count of resource slots but replace their content with
-    # type-appropriate placeholders so the classifier sees a plausible
-    # resource list for the substituted API.
-    return [placeholder] * len(original_resources)
+    """Return a resource list that reflects the substituted API."""
+    resources = list(original_resources or [])
+    prefix = (api_name or "").lower()
+    if not resources:
+        return [prefix] if prefix else []
+    updated = []
+    for resource in resources:
+        resource_text = str(resource)
+        if ":" in resource_text:
+            parts = resource_text.split(":", 1)
+            updated.append(f"{prefix}:{parts[1]}")
+        else:
+            updated.append(f"{prefix}:{resource_text}")
+    return updated
 
 
 # ---------------------------------------------------------------------------
