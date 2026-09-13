@@ -11,10 +11,10 @@ for n, d in list(G.nodes(data=True)):
     if d.get('resources'):
         print('node', n, 'api', d.get('api'), 'resources', d.get('resources'))
 print('--- candidates ---')
-cs = CounterfactualSearch(classifier=None, graph=G)
+cs = CounterfactualSearch(graph=G)
 for i, c in enumerate(cs.propose()[:10]):
     ok = cs.validate(c)
     print(i, c, ok)
     if ok:
         break
-print('run', cs.run())
+print('generated', cs.generate())

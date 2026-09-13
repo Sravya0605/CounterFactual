@@ -43,7 +43,7 @@ def evaluate_dataset() -> Dict[str, Any]:
         start = time.perf_counter()
         events = parse_cape_json(str(report_path))
         graph = build_behavior_graph(events)
-        search = CounterfactualSearch(classifier=None, graph=graph)
+        search = CounterfactualSearch(graph=graph)
         candidates = search.propose()
 
         feasible = []

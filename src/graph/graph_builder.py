@@ -30,6 +30,7 @@ def _coalesce_events(events: List[Dict]) -> Tuple[List[Dict], Dict[str, str]]:
                     "event_type": evt.get("event_type", "system"),
                     "attack_id": evt.get("attack_id"),
                     "resources": evt.get("resources", []),
+                    "arguments": [evt.get("args", {})],
                     "count": 1,
                     "timestamps": [evt.get("timestamp")],
                     "sequences": [evt.get("sequence")],
@@ -42,6 +43,7 @@ def _coalesce_events(events: List[Dict]) -> Tuple[List[Dict], Dict[str, str]]:
             coalesced[idx]["timestamps"].append(evt.get("timestamp"))
             coalesced[idx]["sequences"].append(evt.get("sequence"))
             coalesced[idx]["event_ids"].append(evt.get("id"))
+            coalesced[idx]["arguments"].append(evt.get("args", {}))
         id_map[evt.get("id")] = coalesced[idx]["id"]
     return coalesced, id_map
 
@@ -98,17 +100,23 @@ def build_behavior_graph(
 
     for process_id in process_ids:
         proc_node_id = f"proc:{process_id}"
+        process_events = [evt for evt in events if evt.get("process_id") == process_id]
+        parent_id = next((evt.get("parent_process_id") for evt in process_events if evt.get("parent_process_id") is not None), None)
 
         G.add_node(
             proc_node_id,
             api="process",
             entity_type="process",
             process_id=process_id,
+            parent_process_id=parent_id,
             resources=[],
             count=1,
             timestamps=[],
             attack_id=None,
         )
+
+        if parent_id is not None and f"proc:{parent_id}" in G:
+            G.add_edge(f"proc:{parent_id}", proc_node_id, type="process_creation")
 
     # ------------------------------------------------------------------
     # 2. Coalesced event nodes
@@ -141,6 +149,7 @@ def build_behavior_graph(
             entity_type=entity_type,
             process_id=node.get("process_id"),
             resources=node.get("resources", []),
+            arguments=node.get("arguments", []),
             count=node.get("count", 1),
             timestamps=node.get("timestamps", []),
             sequences=node.get("sequences", []),
@@ -230,12 +239,12 @@ def build_behavior_graph(
     # 5. Build sequence -> graph-node mapping
     # ------------------------------------------------------------------
 
-    sequence_to_node: Dict[int, str] = {}
+    sequence_to_node: Dict[Tuple[str, int], str] = {}
 
     for node in coalesced:
         for sequence in node.get("sequences", []):
             if sequence is not None:
-                sequence_to_node[int(sequence)] = node["id"]
+                sequence_to_node[(str(node.get("process_id")), int(sequence))] = node["id"]
 
     # ------------------------------------------------------------------
     # 6. Add reconstructed resource lifetime edges
@@ -255,14 +264,14 @@ def build_behavior_graph(
             continue
 
         acquisition_node = sequence_to_node.get(
-            int(acquisition_sequence)
+            (str(lifetime.get("process_id")), int(acquisition_sequence))
         )
 
         release_node = None
 
         if release_sequence is not None:
             release_node = sequence_to_node.get(
-                int(release_sequence)
+                (str(lifetime.get("process_id")), int(release_sequence))
             )
 
         # We need the acquisition event to exist in the graph.
@@ -326,7 +335,7 @@ def build_behavior_graph(
             continue
 
         acquisition_node = sequence_to_node.get(
-            int(acquisition_sequence)
+            (str(resource.get("process_id")), int(acquisition_sequence))
         )
 
         if acquisition_node is None:
@@ -359,17 +368,6 @@ def build_behavior_graph(
         )
 
     return G
-
-def test_classify_event_extracts_resource_from_cape_arg_list(self):
-    from src.ingestion.parser import _classify_event
-    args = [
-        {"name": "FileHandle", "value": "0x0000022c"},
-        {"name": "DesiredAccess", "value": "0x00100021"},
-        {"name": "FileName", "value": "C:\\Windows\\System32\\uxtheme.dll"},
-    ]
-    result = _classify_event("NtOpenFile", args)
-    self.assertIn("C:\\Windows\\System32\\uxtheme.dll", result["resources"])
-
 
 if __name__ == "__main__":
     import sys

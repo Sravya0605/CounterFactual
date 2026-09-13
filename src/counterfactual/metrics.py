@@ -37,10 +37,17 @@ def detect_decoy_flips(
     deleted_edges = len(candidate.get("delete_edges", []) or [])
     substitutions = len((candidate.get("substitute", {}) or {}).keys())
     edit_size = len(deleted_nodes) + deleted_edges + substitutions
-    node_delta = edited.number_of_nodes() - original.number_of_nodes()
-
-    if edit_size != 1 or node_delta != -1:
+    if edit_size != 1:
         return []
+
+    if deleted_nodes:
+        node = deleted_nodes[0]
+        dependent = any(
+            data.get("type") in {"resource", "temporal"}
+            for _, _, data in original.out_edges(node, data=True)
+        )
+        if dependent:
+            return []
 
     if orig_prob is None or new_prob is None:
         return []
@@ -48,4 +55,10 @@ def detect_decoy_flips(
     if orig_prob < threshold or new_prob >= threshold:
         return []
 
-    return [{"node": deleted_nodes[0], "reason": "single_node_flip"}]
+    if deleted_nodes:
+        subject = deleted_nodes[0]
+    elif candidate.get("delete_edges"):
+        subject = {"edge": candidate["delete_edges"][0]}
+    else:
+        subject = {"substitution": next(iter((candidate.get("substitute") or {}).items()))}
+    return [{"edit": subject, "reason": "single_edit_flip"}]

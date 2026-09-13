@@ -55,6 +55,16 @@ RESOURCE_ARGUMENTS = {
         "RegOpenKeyExW",
     },
 }
+
+HANDLE_ARGUMENT_NAMES = {
+    "FileHandle",
+    "Handle",
+    "KeyHandle",
+    "SectionHandle",
+    "ProcessHandle",
+    "ThreadHandle",
+    "Socket",
+}
 ATTACK_HINTS = {
     "createfile": "T1105",
     "writefile": "T1027",
@@ -85,7 +95,7 @@ def _cap_repeating_api_calls(calls: List[Dict[str, Any]], max_repeats: int = 5) 
         api = str(call.get("api") or call.get("name") or "unknown")
         if api == last_api:
             streak += 1
-            if streak <= max_repeats:
+            if max_repeats is None or streak <= max_repeats:
                 capped.append(call)
             continue
 
@@ -163,6 +173,11 @@ def _classify_event(api: str, args: Any) -> Dict[str, Any]:
 
                 if resource is not None and resource not in resources:
                     resources.append(resource)
+            elif name in HANDLE_ARGUMENT_NAMES:
+                resource = _normalize_resource(value)
+
+                if resource is not None and resource not in resources:
+                    resources.append(resource)
 
     # Synthetic/test format:
     # {
@@ -212,7 +227,9 @@ def parse_cape_json(path: str) -> List[Dict[str, Any]]:
 
     for idx, proc in enumerate(processes):
         proc_id = proc.get("pid") or proc.get("process_id") or proc.get("name") or f"proc:{idx}"
-        calls = _cap_repeating_api_calls(proc.get("calls") or [])
+        parent_id = proc.get("parent_id") or proc.get("parent_process_id")
+        max_repeats = None if report.get("counterfactual_metadata", {}).get("synthetic") else 5
+        calls = _cap_repeating_api_calls(proc.get("calls") or [], max_repeats=max_repeats)
         for call_idx, call in enumerate(calls):
             api = call.get("api") or call.get("name") or "unknown"
             timestamp = call.get("timestamp") or call.get("time") or proc.get("timestamp")
@@ -222,6 +239,7 @@ def parse_cape_json(path: str) -> List[Dict[str, Any]]:
                 "id": None,
                 "api": api,
                 "process_id": proc_id,
+                "parent_process_id": parent_id,
                 "timestamp": timestamp,
                 "sequence": call_idx,
                 "status": call.get("status"),
@@ -234,7 +252,8 @@ def parse_cape_json(path: str) -> List[Dict[str, Any]]:
             events.append(evt)
 
     if not events and isinstance(report.get("calls"), list):
-        calls = _cap_repeating_api_calls(report["calls"])
+        max_repeats = None if report.get("counterfactual_metadata", {}).get("synthetic") else 5
+        calls = _cap_repeating_api_calls(report["calls"], max_repeats=max_repeats)
         for idx, call in enumerate(calls):
             api = call.get("api") or call.get("name") or "unknown"
             timestamp = call.get("timestamp") or call.get("time")
@@ -244,6 +263,7 @@ def parse_cape_json(path: str) -> List[Dict[str, Any]]:
                 "id": None,
                 "api": api,
                 "process_id": f"root:{idx}",
+                "parent_process_id": None,
                 "timestamp": timestamp,
                 "sequence": idx,
                 "args": args,

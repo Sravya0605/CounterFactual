@@ -3,6 +3,7 @@
 This provides a deterministic scoring function for smoke tests and fast demos.
 It is intentionally simple and should not be treated as a production evaluator.
 """
+import math
 from typing import Any, List
 
 
@@ -14,8 +15,7 @@ class HeuristicClassifier:
         "createscheduledtask": 0.30,
         "createservice": 0.30,
         "createremotethread": 0.25,
-        "apcinject": 0.25,
-        "processhollow": 0.25,
+        "ntqueueapcthread": 0.25,
         "writefile": 0.10,
         "createfile": 0.10,
     }
@@ -33,6 +33,5 @@ class HeuristicClassifier:
                     break
         if total <= 0.0:
             return 0.15
-        node_scale = max(1.0, graph.number_of_nodes() * 0.6)
-        normalized = min(0.99, 0.15 + total / node_scale)
+        normalized = min(0.99, 0.15 + (1.0 - math.exp(-total)))
         return round(normalized, 4)

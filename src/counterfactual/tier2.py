@@ -18,21 +18,40 @@ def generate_synthetic_cape_report(G: nx.DiGraph, out_path: str) -> None:
     pipeline to confirm that the edited graph can be represented as a trace.
     """
     processes = []
-    calls = []
+    calls_by_process = {}
     ts = 1
     for n, d in sorted(G.nodes(data=True), key=lambda item: item[0]):
-        if d.get("entity_type") == "process":
+        if d.get("entity_type") == "resource":
             continue
         api = d.get("api", "unknown")
-        if not api or str(api).lower() == "process":
+        if not api or (str(api).lower() == "process" and not d.get("event_ids")):
             continue
-        resources = d.get("resources", []) or []
-        args = {"path": resources[0] if resources else None, "resources": resources}
-        calls.append({"api": api, "timestamp": ts, "arguments": args})
-        ts += 1
+        process_id = d.get("process_id") or "generated"
+        calls = calls_by_process.setdefault(str(process_id), [])
+        resources = [str(resource) for resource in (d.get("resources", []) or [])]
+        args = {}
+        for resource_index, resource in enumerate(resources):
+            key = "path" if resource_index == 0 else f"path_{resource_index}"
+            args[key] = resource
+        repeat_count = max(1, int(d.get("count", 1) or 1))
+        for _ in range(repeat_count):
+            calls.append({"api": api, "timestamp": ts, "arguments": args})
+            ts += 1
 
-    processes.append({"pid": 1234, "calls": calls})
-    report = {"behavior": {"processes": processes}, "generated_at": datetime.now(timezone.utc).isoformat()}
+    for process_id, calls in calls_by_process.items():
+        try:
+            pid = int(process_id)
+        except (TypeError, ValueError):
+            pid = process_id
+        processes.append({"pid": pid, "process_id": process_id, "calls": calls})
+    report = {
+        "behavior": {"processes": processes},
+        "counterfactual_metadata": {
+            "synthetic": True,
+            "execution_status": "not_executed",
+        },
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+    }
     with open(out_path, "w", encoding="utf-8") as f:
         json.dump(report, f, indent=2)
 

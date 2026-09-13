@@ -5,6 +5,8 @@ __pycache__/
 /data/
 /7zip/
 
+# Local malware/benign corpora, generated traces, and experiment manifests.
 models/*.pkl
+
 
 malware_families.csv
