@@ -90,34 +90,62 @@ def graph_to_entropy_features(G) -> Counter:
     return counts
 
 
+def graph_to_feature_counter(G) -> Counter:
+    """Return a merged Counter of all feature groups for a single graph.
+
+    This is the canonical single-graph feature extraction path used by both
+    the pandas-based batch path (``graph_list_to_bow``) and the fast numpy
+    path (``graph_to_numpy_row``).  Keeping them consistent prevents train/
+    inference skew.
+    """
+    features: Counter = Counter()
+    features.update(graph_to_api_counts(G))
+    features.update(graph_to_normalized_api_features(G))
+    features.update(graph_to_sublinear_api_features(G))
+    features.update(
+        {f"ngram_{'_'.join(gram)}": value for gram, value in graph_to_ngram_features(G).items()}
+    )
+    features.update(graph_to_edge_features(G))
+    features.update(graph_to_entropy_features(G))
+    return features
+
+
+def graph_to_numpy_row(G, token_to_idx: dict):
+    """Return a 1-D numpy float32 array aligned to *token_to_idx*.
+
+    This avoids building a pandas DataFrame and is ~10x faster than
+    ``graph_list_to_bow`` for single-graph scoring during find_flip.
+
+    Parameters
+    ----------
+    G : nx.DiGraph
+        The behavior graph to featurise.
+    token_to_idx : dict
+        ``{feature_name: column_index}`` mapping built from the stored vocab.
+        Build once and cache on the harness — do **not** rebuild per call.
+    """
+    import numpy as np
+
+    n = len(token_to_idx)
+    row = np.zeros(n, dtype=np.float32)
+    for k, v in graph_to_feature_counter(G).items():
+        idx = token_to_idx.get(k)
+        if idx is not None:
+            row[idx] = v
+    return row.reshape(1, -1)
+
+
 def build_feature_vocab(graphs: List[Any]) -> List[str]:
     vocab = set()
     for G in graphs:
-        features = Counter()
-        features.update(graph_to_api_counts(G))
-        features.update(graph_to_normalized_api_features(G))
-        features.update(graph_to_sublinear_api_features(G))
-        features.update({f"ngram_{'_'.join(gram)}": value for gram, value in graph_to_ngram_features(G).items()})
-        features.update(graph_to_edge_features(G))
-        features.update(graph_to_entropy_features(G))
-        vocab.update(features.keys())
+        vocab.update(graph_to_feature_counter(G).keys())
     return sorted(vocab)
 
 
 def graph_list_to_bow(graphs: List[Any], vocab: List[str] = None) -> pd.DataFrame:
     vocab = list(vocab) if vocab is not None else build_feature_vocab(graphs)
-    feature_rows = []
-    for G in graphs:
-        features = Counter()
-        features.update(graph_to_api_counts(G))
-        features.update(graph_to_normalized_api_features(G))
-        features.update(graph_to_sublinear_api_features(G))
-        features.update({f"ngram_{'_'.join(gram)}": value for gram, value in graph_to_ngram_features(G).items()})
-        features.update(graph_to_edge_features(G))
-        features.update(graph_to_entropy_features(G))
-        feature_rows.append(features)
-
     rows = []
-    for features in feature_rows:
+    for G in graphs:
+        features = graph_to_feature_counter(G)
         rows.append([features.get(token, 0) for token in vocab])
     return pd.DataFrame(rows, columns=vocab)
