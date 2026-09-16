@@ -190,8 +190,8 @@ def validate_candidate(G: nx.DiGraph, candidate: Dict) -> bool:
     # check (did the edit destroy process presence that existed?), not an
     # absolute one, so it correctly leaves graphs that never modeled a
     # process node (e.g. isolated resource-dependency test fixtures) alone.
-    original_has_process = any(data.get("entity_type") == "process" for _, data in G.nodes(data=True))
-    edited_has_process = any(data.get("entity_type") == "process" for _, data in G2.nodes(data=True))
+    original_has_process = any(str(data.get("api", "")).lower() == "process" for _, data in G.nodes(data=True))
+    edited_has_process = any(str(data.get("api", "")).lower() == "process" for _, data in G2.nodes(data=True))
     if original_has_process and not edited_has_process:
         return False
 
@@ -268,7 +268,14 @@ def validate_candidate(G: nx.DiGraph, candidate: Dict) -> bool:
             if not is_anchor_plausible(G, anchor, api):
                 return False
 
-    process_nodes = [node for node, data in G2.nodes(data=True) if data.get("entity_type") == "process"]
+    # NOTE: identify the process ANCHOR nodes by their literal api value, not
+    # by entity_type=="process" -- real event nodes (OpenProcess,
+    # CreateRemoteThread, ...) also carry entity_type=="process" (see
+    # graph_builder._entity_type_for_api), since that label describes the
+    # API category, not "this is an anchor". Filtering by entity_type here
+    # let a deleted child process's own injection *events* survive, orphaned
+    # from any process, by mistakenly treating them as exempt anchors.
+    process_nodes = [node for node, data in G2.nodes(data=True) if str(data.get("api", "")).lower() == "process"]
     if process_nodes:
         for node in process_nodes:
             child_pid = G2.nodes[node].get("process_id")
@@ -294,7 +301,7 @@ def validate_candidate(G: nx.DiGraph, candidate: Dict) -> bool:
                 if not creation_events:
                     return False
         for node, data in G2.nodes(data=True):
-            if data.get("entity_type") == "process":
+            if str(data.get("api", "")).lower() == "process":
                 continue
             # Walk backward through predecessors (not just immediate ones) to
             # find a process ancestor. Immediate-predecessor-only checking
@@ -309,7 +316,7 @@ def validate_candidate(G: nx.DiGraph, candidate: Dict) -> bool:
                 if current in visited:
                     continue
                 visited.add(current)
-                if G2.nodes[current].get("entity_type") == "process":
+                if str(G2.nodes[current].get("api", "")).lower() == "process":
                     has_process_ancestor = True
                     break
                 stack.extend(G2.predecessors(current))

@@ -51,9 +51,17 @@ class CounterfactualSearch:
         return (semantic - routine_penalty, -len(api), str(node))
 
     def _candidate_nodes(self) -> List[str]:
+        # Exclude the process ANCHOR node (identified by its literal api
+        # value, set once per process by the graph builder) and synthetic
+        # resource-lifetime nodes. Do NOT exclude by entity_type=="process":
+        # real event nodes (e.g. OpenProcess, CreateRemoteThread) are also
+        # classified with entity_type "process" by _entity_type_for_api,
+        # since that label describes the API *category*, not "this is an
+        # anchor". Filtering on entity_type here previously made every
+        # process-injection call permanently invisible to the search.
         nodes = [
             node for node, data in self.graph.nodes(data=True)
-            if data.get("entity_type") not in {"process", "resource"}
+            if data.get("entity_type") != "resource"
             and str(data.get("api") or "").lower() != "process"
         ]
         return sorted(nodes, key=self._node_priority, reverse=True)

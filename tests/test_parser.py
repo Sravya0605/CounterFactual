@@ -585,6 +585,45 @@ class ParserGraphTest(unittest.TestCase):
 
         self.assertEqual(len(resource_nodes), 1)
         self.assertEqual(list(graph.predecessors(resource_nodes[0])), ["n1"])
-    
+
+    def test_candidate_nodes_includes_process_injection_events(self):
+        # entity_type "process" is assigned to real event nodes whose API
+        # relates to process/thread manipulation (OpenProcess,
+        # CreateRemoteThread, ...), not only to the process anchor node
+        # itself. _candidate_nodes() must exclude the anchor (identified by
+        # its literal api=="process" value) without also excluding these
+        # real, security-relevant events -- otherwise the search can never
+        # propose editing process-injection behavior at all.
+        G = nx.DiGraph()
+        G.add_node("proc:1", api="process", entity_type="process")
+        G.add_node("n0", api="OpenProcess", entity_type="process", resources=[])
+        G.add_node("n1", api="CreateRemoteThread", entity_type="process", resources=[])
+        G.add_edge("proc:1", "n0", type="process")
+        G.add_edge("proc:1", "n1", type="process")
+
+        search = CounterfactualSearch(graph=G)
+        candidate_nodes = search._candidate_nodes()
+
+        self.assertNotIn("proc:1", candidate_nodes)
+        self.assertIn("n0", candidate_nodes)
+        self.assertIn("n1", candidate_nodes)
+
+    def test_validate_candidate_rejects_orphaned_injection_event(self):
+        # A real process-injection EVENT node (CreateRemoteThread) also has
+        # entity_type=="process" (same label used for the process ANCHOR
+        # node). Deleting a child process's anchor must not let its own
+        # injection events survive, disconnected from any process ancestor,
+        # just because they happen to share that entity_type label.
+        G = nx.DiGraph()
+        G.add_node("proc:1", api="process", entity_type="process", process_id=1, parent_process_id=None)
+        G.add_node("proc:2", api="process", entity_type="process", process_id=2, parent_process_id=1)
+        G.add_node("creator_evt", api="CreateProcessW", entity_type="process", process_id=1, resources=[])
+        G.add_node("inject_evt", api="CreateRemoteThread", entity_type="process", process_id=2, resources=[])
+        G.add_edge("proc:1", "proc:2", type="process_creation")
+        G.add_edge("proc:1", "creator_evt", type="process")
+        G.add_edge("proc:2", "inject_evt", type="process")
+
+        self.assertFalse(validate_candidate(G, {"delete_nodes": ["proc:2"]}))
+
 if __name__ == "__main__":
     unittest.main()

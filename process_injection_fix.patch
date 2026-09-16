@@ -1,0 +1,123 @@
+diff --git a/src/counterfactual/feasibility.py b/src/counterfactual/feasibility.py
+index b8ca642..8a57d6b 100644
+--- a/src/counterfactual/feasibility.py
++++ b/src/counterfactual/feasibility.py
+@@ -190,8 +190,8 @@ def validate_candidate(G: nx.DiGraph, candidate: Dict) -> bool:
+     # check (did the edit destroy process presence that existed?), not an
+     # absolute one, so it correctly leaves graphs that never modeled a
+     # process node (e.g. isolated resource-dependency test fixtures) alone.
+-    original_has_process = any(data.get("entity_type") == "process" for _, data in G.nodes(data=True))
+-    edited_has_process = any(data.get("entity_type") == "process" for _, data in G2.nodes(data=True))
++    original_has_process = any(str(data.get("api", "")).lower() == "process" for _, data in G.nodes(data=True))
++    edited_has_process = any(str(data.get("api", "")).lower() == "process" for _, data in G2.nodes(data=True))
+     if original_has_process and not edited_has_process:
+         return False
+ 
+@@ -268,7 +268,14 @@ def validate_candidate(G: nx.DiGraph, candidate: Dict) -> bool:
+             if not is_anchor_plausible(G, anchor, api):
+                 return False
+ 
+-    process_nodes = [node for node, data in G2.nodes(data=True) if data.get("entity_type") == "process"]
++    # NOTE: identify the process ANCHOR nodes by their literal api value, not
++    # by entity_type=="process" -- real event nodes (OpenProcess,
++    # CreateRemoteThread, ...) also carry entity_type=="process" (see
++    # graph_builder._entity_type_for_api), since that label describes the
++    # API category, not "this is an anchor". Filtering by entity_type here
++    # let a deleted child process's own injection *events* survive, orphaned
++    # from any process, by mistakenly treating them as exempt anchors.
++    process_nodes = [node for node, data in G2.nodes(data=True) if str(data.get("api", "")).lower() == "process"]
+     if process_nodes:
+         for node in process_nodes:
+             child_pid = G2.nodes[node].get("process_id")
+@@ -294,7 +301,7 @@ def validate_candidate(G: nx.DiGraph, candidate: Dict) -> bool:
+                 if not creation_events:
+                     return False
+         for node, data in G2.nodes(data=True):
+-            if data.get("entity_type") == "process":
++            if str(data.get("api", "")).lower() == "process":
+                 continue
+             # Walk backward through predecessors (not just immediate ones) to
+             # find a process ancestor. Immediate-predecessor-only checking
+@@ -309,7 +316,7 @@ def validate_candidate(G: nx.DiGraph, candidate: Dict) -> bool:
+                 if current in visited:
+                     continue
+                 visited.add(current)
+-                if G2.nodes[current].get("entity_type") == "process":
++                if str(G2.nodes[current].get("api", "")).lower() == "process":
+                     has_process_ancestor = True
+                     break
+                 stack.extend(G2.predecessors(current))
+diff --git a/src/counterfactual/search.py b/src/counterfactual/search.py
+index c796000..c0adc3c 100644
+--- a/src/counterfactual/search.py
++++ b/src/counterfactual/search.py
+@@ -51,9 +51,17 @@ class CounterfactualSearch:
+         return (semantic - routine_penalty, -len(api), str(node))
+ 
+     def _candidate_nodes(self) -> List[str]:
++        # Exclude the process ANCHOR node (identified by its literal api
++        # value, set once per process by the graph builder) and synthetic
++        # resource-lifetime nodes. Do NOT exclude by entity_type=="process":
++        # real event nodes (e.g. OpenProcess, CreateRemoteThread) are also
++        # classified with entity_type "process" by _entity_type_for_api,
++        # since that label describes the API *category*, not "this is an
++        # anchor". Filtering on entity_type here previously made every
++        # process-injection call permanently invisible to the search.
+         nodes = [
+             node for node, data in self.graph.nodes(data=True)
+-            if data.get("entity_type") not in {"process", "resource"}
++            if data.get("entity_type") != "resource"
+             and str(data.get("api") or "").lower() != "process"
+         ]
+         return sorted(nodes, key=self._node_priority, reverse=True)
+diff --git a/tests/test_parser.py b/tests/test_parser.py
+index ccce3a8..b0b4f86 100644
+--- a/tests/test_parser.py
++++ b/tests/test_parser.py
+@@ -585,6 +585,45 @@ class ParserGraphTest(unittest.TestCase):
+ 
+         self.assertEqual(len(resource_nodes), 1)
+         self.assertEqual(list(graph.predecessors(resource_nodes[0])), ["n1"])
+-    
++
++    def test_candidate_nodes_includes_process_injection_events(self):
++        # entity_type "process" is assigned to real event nodes whose API
++        # relates to process/thread manipulation (OpenProcess,
++        # CreateRemoteThread, ...), not only to the process anchor node
++        # itself. _candidate_nodes() must exclude the anchor (identified by
++        # its literal api=="process" value) without also excluding these
++        # real, security-relevant events -- otherwise the search can never
++        # propose editing process-injection behavior at all.
++        G = nx.DiGraph()
++        G.add_node("proc:1", api="process", entity_type="process")
++        G.add_node("n0", api="OpenProcess", entity_type="process", resources=[])
++        G.add_node("n1", api="CreateRemoteThread", entity_type="process", resources=[])
++        G.add_edge("proc:1", "n0", type="process")
++        G.add_edge("proc:1", "n1", type="process")
++
++        search = CounterfactualSearch(graph=G)
++        candidate_nodes = search._candidate_nodes()
++
++        self.assertNotIn("proc:1", candidate_nodes)
++        self.assertIn("n0", candidate_nodes)
++        self.assertIn("n1", candidate_nodes)
++
++    def test_validate_candidate_rejects_orphaned_injection_event(self):
++        # A real process-injection EVENT node (CreateRemoteThread) also has
++        # entity_type=="process" (same label used for the process ANCHOR
++        # node). Deleting a child process's anchor must not let its own
++        # injection events survive, disconnected from any process ancestor,
++        # just because they happen to share that entity_type label.
++        G = nx.DiGraph()
++        G.add_node("proc:1", api="process", entity_type="process", process_id=1, parent_process_id=None)
++        G.add_node("proc:2", api="process", entity_type="process", process_id=2, parent_process_id=1)
++        G.add_node("creator_evt", api="CreateProcessW", entity_type="process", process_id=1, resources=[])
++        G.add_node("inject_evt", api="CreateRemoteThread", entity_type="process", process_id=2, resources=[])
++        G.add_edge("proc:1", "proc:2", type="process_creation")
++        G.add_edge("proc:1", "creator_evt", type="process")
++        G.add_edge("proc:2", "inject_evt", type="process")
++
++        self.assertFalse(validate_candidate(G, {"delete_nodes": ["proc:2"]}))
++
+ if __name__ == "__main__":
+     unittest.main()
