@@ -108,10 +108,30 @@ class ParserGraphTest(unittest.TestCase):
         G.add_edge("n2", "n3", type="resource")
 
         edited = apply_candidate(G, {"delete_nodes": [], "substitute": {"n1": "CreateFile"}})
-        self.assertEqual(edited.nodes["n1"]["resources"], ["createfile:foo"])
+        # The substituted node's resource must reflect CreateFile's real
+        # resource type (a file path placeholder), not a mangled version of
+        # WriteFile's original resource string -- a scheduled-task or
+        # registry-key substitution keeping the old resource text would be
+        # semantically invalid (e.g. a task "claiming" a registry key path).
+        self.assertEqual(edited.nodes["n1"]["resources"], ["C:\\Users\\Public\\[substituted]"])
 
         search = CounterfactualSearch(graph=G)
         self.assertEqual(search._downstream_cascade("n1"), ["n2", "n3"])
+
+    def test_substitution_resource_typing_is_semantically_correct(self):
+        # A RegSetValue -> CreateScheduledTask substitution must NOT keep
+        # the original registry-key path as the scheduled task's resource
+        # (e.g. "createscheduledtask:HKCU\\...\\Run" is meaningless -- a
+        # scheduled task does not "have" a registry key as its resource).
+        # It must get a resource of the TARGET api's real resource type.
+        G = nx.DiGraph()
+        G.add_node("n1", api="RegSetValue", resources=["HKCU\\Software\\Run\\evil"])
+
+        edited = apply_candidate(G, {"delete_nodes": [], "substitute": {"n1": "CreateScheduledTask"}})
+        resources = edited.nodes["n1"]["resources"]
+        self.assertEqual(len(resources), 1)
+        self.assertNotIn("HKCU", resources[0])
+        self.assertNotIn("createscheduledtask:", resources[0].lower())
 
     def test_lgbm_harness_trains_and_persists_model(self):
         from src.classifier.harness import ClassifierHarness
