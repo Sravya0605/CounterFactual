@@ -44,10 +44,23 @@ def build_graph(path):
     return build_behavior_graph(events, lifetimes=lt["lifetimes"], active_resources=lt["still_active"])
 
 
-def load_class(folder, label, max_per_class=None):
+def list_paths(folder, max_count=None, rng=None):
+    """List json files in folder, optionally shuffled before capping.
+
+    Shuffling before slicing (rather than always taking the alphabetically
+    first N) means --max-per-class samples a different, genuinely random
+    subset each run when --seed changes, instead of the same fixed files
+    every time.
+    """
     paths = sorted(glob.glob(os.path.join(folder, "*.json")))
-    if max_per_class:
-        paths = paths[:max_per_class]
+    if rng is not None:
+        rng.shuffle(paths)
+    if max_count:
+        paths = paths[:max_count]
+    return paths
+
+
+def load_class(paths, label):
     graphs, labels, names, skipped = [], [], [], []
     for i, path in enumerate(paths, 1):
         try:
@@ -57,9 +70,9 @@ def load_class(folder, label, max_per_class=None):
         except Exception as exc:
             skipped.append((path, str(exc)))
         if i % 50 == 0:
-            print(f"  ...{i}/{len(paths)} parsed from {folder}")
+            print(f"  ...{i}/{len(paths)} parsed")
     if skipped:
-        print(f"  Skipped {len(skipped)} unreadable file(s) in {folder}:")
+        print(f"  Skipped {len(skipped)} unreadable file(s):")
         for p, err in skipped[:5]:
             print(f"    {p}: {err}")
     return graphs, labels, names
@@ -78,6 +91,9 @@ def main():
                      help="Cap how many malware reports from training_reports are tested for counterfactual flips")
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--out", default="pipeline_results.json")
+    ap.add_argument("--epochs", type=int, default=10, help="GNN backend only: training epochs")
+    ap.add_argument("--batch-size", type=int, default=16, help="GNN backend only: batch size")
+    ap.add_argument("--rounds", type=int, default=100, help="lgbm backend only: boosting rounds")
     args = ap.parse_args()
 
     benign_dir = os.path.join(args.data_dir, "benign_reports")
@@ -88,13 +104,30 @@ def main():
         if not os.path.isdir(d):
             print(f"WARNING: expected folder not found: {d}")
 
+    rng = random.Random(args.seed)
+
+    benign_paths = list_paths(benign_dir, args.max_per_class, rng)
+    malware_all_paths = list_paths(malware_dir, None, rng)  # shuffle full pool once
+    malware_train_paths = malware_all_paths[: args.max_per_class] if args.max_per_class else malware_all_paths
+    malware_train_set = set(malware_train_paths)
+
+    # Counterfactual test files must be malware reports the classifier has
+    # NEVER seen during training -- otherwise you're measuring how hard it
+    # is to flip a memorized training example, which tends to look even
+    # more confidently "malicious" than a genuine held-out case and makes
+    # every result here misleadingly pessimistic.
+    malware_holdout_paths = [p for p in malware_all_paths if p not in malware_train_set]
+    if not malware_holdout_paths:
+        print("WARNING: --max-per-class used the entire malware_dir for training, leaving "
+              "nothing held out to test counterfactuals on. Lower --max-per-class or add more files.")
+
     print(f"=== Loading benign reports from {benign_dir} ===")
-    benign_graphs, benign_labels, benign_names = load_class(benign_dir, 0, args.max_per_class)
+    benign_graphs, benign_labels, benign_names = load_class(benign_paths, 0)
     print(f"  {len(benign_graphs)} loaded")
 
     print(f"=== Loading malware reports from {malware_dir} ===")
-    malware_graphs, malware_labels, malware_names = load_class(malware_dir, 1, args.max_per_class)
-    print(f"  {len(malware_graphs)} loaded")
+    malware_graphs, malware_labels, malware_names = load_class(malware_train_paths, 1)
+    print(f"  {len(malware_graphs)} loaded ({len(malware_holdout_paths)} more held out, untouched by training)")
 
     graphs = benign_graphs + malware_graphs
     labels = benign_labels + malware_labels
@@ -111,7 +144,12 @@ def main():
 
     print(f"\n=== Training {args.backend} classifier: {len(train_idx)} train / {len(test_idx)} held-out ===")
     harness = ClassifierHarness(backend=args.backend, model_path=f"models/pipeline_{args.backend}.pkl")
-    harness.train([graphs[i] for i in train_idx], [labels[i] for i in train_idx])
+    if args.backend == "gnn":
+        harness.train([graphs[i] for i in train_idx], [labels[i] for i in train_idx],
+                       epochs=args.epochs, batch_size=args.batch_size)
+    else:
+        harness.train([graphs[i] for i in train_idx], [labels[i] for i in train_idx],
+                       rounds=args.rounds)
 
     accuracy = None
     if test_idx:
@@ -130,14 +168,15 @@ def main():
                   "may be relying on a shortcut rather than genuine behavioral signal. Worth checking "
                   "feature importances before trusting this accuracy number.")
 
-    # Counterfactual generation is evaluated ONLY on malware reports from
-    # training_reports. Successful generated reports are saved separately
-    # under counterfactual_reports.
-    print(f"\n=== Running counterfactual pipeline on malware reports from {malware_dir} ===")
-    cf_paths = sorted(glob.glob(os.path.join(malware_dir, "*.json")))
+    # Counterfactual generation is evaluated on HELD-OUT malware reports --
+    # files the classifier never saw during training. See malware_holdout_paths
+    # above.
+    print(f"\n=== Running counterfactual pipeline on held-out malware reports from {malware_dir} ===")
+    cf_paths = malware_holdout_paths
+    rng.shuffle(cf_paths)
     if args.max_counterfactual:
         cf_paths = cf_paths[:args.max_counterfactual]
-    print(f"  {len(cf_paths)} malware report(s) to test")
+    print(f"  {len(cf_paths)} malware report(s) to test (drawn from {len(malware_holdout_paths)} available held-out files)")
 
     os.makedirs(cf_dir, exist_ok=True)
 
@@ -224,5 +263,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-
