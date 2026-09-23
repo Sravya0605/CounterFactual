@@ -9,7 +9,7 @@ try:
     import torch
     import torch.nn.functional as F
     from torch.nn import Linear
-    from torch_geometric.nn import GATv2Conv, GCNConv, global_add_pool, global_max_pool, global_mean_pool
+    from torch_geometric.nn import GATv2Conv, GCNConv, global_max_pool, global_mean_pool
 except Exception as exc:  # pragma: no cover
     raise ImportError("PyTorch/PyG required for GNN support: install torch and torch-geometric") from exc
 
@@ -23,7 +23,7 @@ class SimpleGCN(nn.Module):
         self.edge_dim = edge_dim
         self.conv2 = GATv2Conv(hidden, hidden, heads=2, concat=False, edge_dim=edge_dim if edge_dim is not None else None)
         self.norm = nn.LayerNorm(hidden)
-        self.lin = Linear(hidden * 3, out_channels)
+        self.lin = Linear(hidden * 2, out_channels)
 
     def forward(self, x, edge_index, batch=None, edge_attr=None):
         x = F.relu(self.conv1(x, edge_index))
@@ -38,6 +38,5 @@ class SimpleGCN(nn.Module):
 
         mean_pool = global_mean_pool(x, batch)
         max_pool = global_max_pool(x, batch)
-        add_pool = global_add_pool(x, batch)
-        x = torch.cat([mean_pool, max_pool, add_pool], dim=-1)
+        x = torch.cat([mean_pool, max_pool], dim=-1)
         return self.lin(x).squeeze(-1)
