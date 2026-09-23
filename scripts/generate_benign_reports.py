@@ -73,8 +73,10 @@ def generate_report(seed):
     base = datetime(2024, random.randint(1, 12), random.randint(1, 28), 12, 0, 0)
     raw_calls = build_calls(app, user, random.randint(30, 80))
     calls = []
+    offset_ms=0
     for index, (api, arguments) in enumerate(raw_calls):
-        timestamp = base + timedelta(milliseconds=index * random.randint(5, 25))
+        offset_ms += random.randint(5, 25)
+        timestamp = base + timedelta(milliseconds=offset_ms)
         calls.append({
             "timestamp": timestamp.strftime("%Y-%m-%d %H:%M:%S,%f")[:-3],
             "api": api,

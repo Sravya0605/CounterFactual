@@ -54,3 +54,4 @@ def match_resource_lifetimes(events: List[Dict]) -> Dict[str, list]:
         "orphan_releases": orphan_releases,
         "still_active": still_active,
     }
+

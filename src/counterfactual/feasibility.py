@@ -100,10 +100,21 @@ OPENING_API_TOKENS = {
     "open", "create", "socket", "connect",
 }
 CLOSING_API_TOKENS = {
-    "closehandle", "ntclose", "regclosekey", "ntreleasemutant",
+    "closehandle", "ntclose", "regclosekey",
     "deletefile", "regdeletekey", "regdeletevalue", "terminateprocess",
     "closesocket",
 }
+# NOTE: NtReleaseMutant is deliberately NOT here. Releasing a mutex is an
+# unlock, not a close -- the handle stays fully valid and can be waited on,
+# released, and re-waited on any number of times for the rest of the
+# process's life (the normal pattern for a mutex used as a lock). Treating
+# it as a closing token caused _check_resource_lifetime to reject the very
+# first NtWaitForSingleObject after any NtReleaseMutant, which in turn
+# rejected the unmodified, ground-truth graph itself on real samples that
+# use a mutex as a singleton/critical-section lock -- and since this check
+# runs over the whole graph rather than just the edited region, that one
+# false violation was enough to fail nearly every proposed candidate,
+# regardless of what the candidate actually touched.
 
 
 def _matches_any(api: str, tokens: set) -> bool:
@@ -121,6 +132,36 @@ def _node_timestamp(data: Dict) -> float:
     return min(normalize_timestamp(t) for t in values)
 
 
+def _is_stable_resource_identifier(resource) -> bool:
+    """Return False for resource strings that aren't a reliable identity to
+    track a lifecycle against.
+
+    Raw numeric handle values (e.g. "0x00000088") are not stable
+    identifiers: Windows recycles handle numbers constantly, so the same
+    numeric value can legitimately refer to a completely different object
+    later in the same trace once the original was closed. Treating the
+    number itself as "the resource" conflates unrelated objects and
+    produces false use-after-close violations. Well-known pseudo-handle
+    constants (GetCurrentProcess's -1 / 0xffffffff / 0xffffffffffffffff)
+    are excluded outright -- they are never genuinely opened or closed,
+    they're a compile-time sentinel every self-referencing call
+    (VirtualAlloc, VirtualProtect, NtMapViewOfSection on your own process,
+    ...) shares, which shows up in almost any sample that unpacks or
+    injects into itself.
+
+    File paths, registry keys, domains, and similar semantic identifiers
+    are unaffected by this and are still tracked normally.
+    """
+    r = str(resource or "").strip().lower()
+    if not r:
+        return False
+    if r in {"-1", "0xffffffff", "0xfffffffe", "0xffffffffffffffff"}:
+        return False
+    if r.startswith("0x"):
+        return False
+    return True
+
+
 def _check_resource_lifetime(G2: nx.DiGraph) -> bool:
     """Reject graphs where a resource is used after being closed/freed,
     without an intervening re-open. Modeled as a per-resource open/close
@@ -129,12 +170,18 @@ def _check_resource_lifetime(G2: nx.DiGraph) -> bool:
     within one trace (e.g. the same file path handled across two separate
     handles), and a naive "no use after the first close" rule would
     reject that common, entirely valid pattern.
+
+    Only tracked for stable resource identifiers (see
+    _is_stable_resource_identifier) -- raw numeric handle values are
+    excluded since the OS can and does recycle them for unrelated objects.
     """
     events_by_resource: Dict[str, list] = {}
     for _, data in G2.nodes(data=True):
         api = data.get("api")
         ts = _node_timestamp(data)
         for resource in data.get("resources", []) or []:
+            if not _is_stable_resource_identifier(resource):
+                continue
             events_by_resource.setdefault(resource, []).append((ts, api))
 
     for resource, events in events_by_resource.items():
@@ -300,29 +347,26 @@ def validate_candidate(G: nx.DiGraph, candidate: Dict) -> bool:
                 ]
                 if not creation_events:
                     return False
+        # Every non-process node must be reachable from SOME process node via
+        # a forward path (process -> ... -> node). Originally this walked
+        # backward from every single node independently, which redoes a full
+        # graph traversal per node -- O(V*(V+E)) for the whole check. Doing
+        # one multi-source forward traversal starting from all process nodes
+        # at once computes the exact same "has a process ancestor" set for
+        # every node simultaneously, in O(V+E) total.
+        reachable_from_process = set()
+        stack=list(process_nodes)
+        while stack:
+            current = stack.pop()
+            if current in reachable_from_process:
+                continue
+            reachable_from_process.add(current)
+            stack.extend(G2.successors(current))
         for node, data in G2.nodes(data=True):
             if str(data.get("api", "")).lower() == "process":
                 continue
-            # Walk backward through predecessors (not just immediate ones) to
-            # find a process ancestor. Immediate-predecessor-only checking
-            # breaks for any node reachable from a process only through
-            # intermediate nodes -- e.g. a resource-lifetime node whose only
-            # predecessor is an API-call event, not the process itself.
-            visited = set()
-            stack = list(G2.predecessors(node))
-            has_process_ancestor = False
-            while stack:
-                current = stack.pop()
-                if current in visited:
-                    continue
-                visited.add(current)
-                if str(G2.nodes[current].get("api", "")).lower() == "process":
-                    has_process_ancestor = True
-                    break
-                stack.extend(G2.predecessors(current))
-            if not has_process_ancestor:
+            if node not in reachable_from_process:
                 return False
-
     return True
 
 

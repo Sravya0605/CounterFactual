@@ -48,6 +48,19 @@ def _coalesce_events(events: List[Dict]) -> Tuple[List[Dict], Dict[str, str]]:
     return coalesced, id_map
 
 
+def _sequence_sort_key(node_id: str, node_by_id: Dict[str, Dict]) -> float:
+    """Safe sort key by minimum sequence number.
+
+    Falls back to +infinity (sorts last, never crashes) when a node has no
+    non-None sequence value at all -- e.g. an event whose sequence number
+    was missing or malformed in the source report. Without this fallback,
+    min() over an all-None sequence list raises ValueError and aborts graph
+    construction for the entire trace.
+    """
+    sequences = [s for s in node_by_id[node_id].get("sequences", []) if s is not None]
+    return min(sequences) if sequences else float("inf")
+
+
 def _first_timestamp(node: Dict) -> float:
     from src.utils.timestamps import normalize_timestamp
 
@@ -181,11 +194,7 @@ def build_behavior_graph(
         ]
 
         proc_nodes.sort(
-            key=lambda nid: min(
-                s
-                for s in node_by_id[nid].get("sequences", [])
-                if s is not None
-            )
+            key=lambda nid: _sequence_sort_key(nid, node_by_id)
         )
 
         for i in range(len(proc_nodes) - 1):
@@ -218,11 +227,7 @@ def build_behavior_graph(
     for (_, _), nodes in resource_to_nodes.items():
         nodes_sorted = sorted(
             nodes,
-            key=lambda nid: min(
-                s
-                for s in node_by_id[nid].get("sequences", [])
-                if s is not None
-            )
+            key=lambda nid: _sequence_sort_key(nid, node_by_id)
         )
 
         for i in range(len(nodes_sorted) - 1):

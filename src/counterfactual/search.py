@@ -31,6 +31,15 @@ class CounterfactualSearch:
         self.enforce_feasibility = True
         self.pair_node_limit = 32
         self.max_pair_candidates = 512
+
+        # Beyond-pair combination search.
+        #
+        # These are deliberately bounded because exhaustive combinations become
+        # combinatorial very quickly on real malware traces.
+        self.chain_node_limit = 32
+        self.max_chain_starts = 8
+        self.max_chain_candidates = 512
+        self.chain_beam_width = 8
         self.max_edits = max(3, min(10, int(max(3, self.graph.number_of_nodes() * 0.1 + 0.999))))
 
     def _node_priority(self, node: str) -> tuple:
@@ -48,7 +57,22 @@ class CounterfactualSearch:
         semantic += int(entity_type in {"persistence", "network", "registry"}) * 8
         semantic += min(len(data.get("resources", []) or []), 4)
         routine_penalty = int(api in {"heapcreate", "getmodulehandlea", "getmodulehandlew", "ldrgetprocedureaddressforcaller"}) * 6
-        return (semantic - routine_penalty, -len(api), str(node))
+
+        # Boost by what the TRAINED CLASSIFIER actually weighs, when known --
+        # not just the hand-picked security tokens above. Without this, a
+        # node contributing to whatever feature the model actually keys on
+        # (which can be something unglamorous like a DLL-load count) never
+        # gets prioritized, and the search spends its edit budget on
+        # "security-looking" nodes the model may not care about at all.
+        importance_boost = 0
+        feature_importance = getattr(self, "feature_importance", None)
+        max_importance = getattr(self, "_max_feature_importance", None)
+        if feature_importance and max_importance:
+            raw = feature_importance.get(api, 0) + feature_importance.get(f"log1p_{api}", 0)
+            if raw > 0:
+                importance_boost = round((raw / max_importance) * 50)
+
+        return (semantic + importance_boost - routine_penalty, -len(api), str(node))
 
     def _candidate_nodes(self) -> List[str]:
         # Exclude the process ANCHOR node (identified by its literal api
@@ -128,13 +152,16 @@ class CounterfactualSearch:
             )
         )
 
-    def propose(self, guidance_model: Any = None, api_vocab: Any = None) -> List[Dict]:
+    def propose(self, guidance_model: Any = None, api_vocab: Any = None, feature_importance: Any = None) -> List[Dict]:
         """Generate structurally possible edits without querying a classifier."""
         cands: List[Dict] = []
-        nodes = self._candidate_nodes()
-        seen = set()
         if api_vocab is not None:
             self.api_vocab = api_vocab
+        if feature_importance:
+            self.feature_importance = feature_importance
+            self._max_feature_importance = max(feature_importance.values()) if feature_importance else None
+        nodes = self._candidate_nodes()
+        seen = set()
 
         def add(candidate: Optional[Dict]) -> None:
             if candidate is None or not self._within_edit_budget(candidate):
@@ -198,6 +225,101 @@ class CounterfactualSearch:
             if pair_count >= self.max_pair_candidates:
                 break
 
+        # Beyond pairs: search bounded combinations of independently
+        # selected nodes. A single behavior or pair may not be sufficient
+        # to cross the classifier boundary when malicious evidence is
+        # distributed across several events.
+        #
+        # We deliberately do NOT enumerate all combinations because
+        # C(N, K) becomes enormous on real traces. Instead, maintain a
+        # bounded beam of promising partial combinations and grow them
+        # incrementally.
+        chain_pool = nodes[: self.chain_node_limit]
+
+        chain_candidates_added = 0
+
+        if len(chain_pool) >= 3 and self.max_edits >= 3:
+            # Each beam entry is a tuple containing the selected node names.
+            #
+            # Start from several different high-priority nodes rather than
+            # only the first node. This prevents the search from becoming
+            # locked onto one semantic family.
+            beams = [
+                (node,)
+                for node in chain_pool[: self.max_chain_starts]
+            ]
+
+            seen_combinations = set()
+
+            for depth in range(2, self.max_edits + 1):
+                next_beam = []
+
+                for selected in beams:
+                    selected_set = set(selected)
+
+                    # Candidates are considered in classifier-aware /
+                    # semantic-priority order because `nodes` is already
+                    # sorted by _node_priority().
+                    for node in chain_pool:
+                        if node in selected_set:
+                            continue
+
+                        combination = tuple(
+                            sorted((*selected, node), key=str)
+                        )
+
+                        if combination in seen_combinations:
+                            continue
+
+                        seen_combinations.add(combination)
+
+                        candidate = self._merged_closure_candidate(
+                            list(combination)
+                        )
+
+                        if candidate is None:
+                            # Adding nodes can only increase the deletion
+                            # footprint, so this combination cannot be used.
+                            continue
+
+                        add(candidate)
+                        chain_candidates_added += 1
+
+                        if chain_candidates_added >= self.max_chain_candidates:
+                            break
+
+                        # Keep this partial combination available for the
+                        # next depth.
+                        next_beam.append(combination)
+
+                    if chain_candidates_added >= self.max_chain_candidates:
+                        break
+
+                if chain_candidates_added >= self.max_chain_candidates:
+                    break
+
+                if not next_beam:
+                    break
+
+                # Rank partial combinations by the semantic priority of
+                # their nodes. This keeps the beam focused on combinations
+                # that are more likely to affect the classifier.
+                def combination_priority(combination):
+                    return sum(
+                        self._node_priority(node)[0]
+                        for node in combination
+                    )
+
+                next_beam.sort(
+                    key=lambda combo: (
+                        -combination_priority(combo),
+                        combo,
+                    )
+                )
+
+                # Prevent exponential growth of the beam.
+                beams = next_beam[: self.chain_beam_width]
+
         # Pass 3: insertion proposals (separate budget)
         try:
             from src.counterfactual.insertions import propose_insertions
@@ -255,23 +377,39 @@ class CounterfactualSearch:
         return self.generate_candidates()
 
     def find_flip(self, classifier: Any) -> Dict:
-        """Confirm the lowest-cost feasible candidate that flips a verdict."""
-        guidance_model = getattr(classifier, "model", classifier)
-        generated = self._generate_with_guidance(classifier, guidance_model)
-        candidates = generated["feasible_candidates"]
-        if not candidates:
-            return generated
+        """Confirm the lowest-cost feasible candidate that flips a verdict.
 
+        Scores the ORIGINAL graph first -- one cheap classifier call. Only if
+        the sample is actually above the malicious threshold do we pay for
+        the expensive propose+validate search. Checking this first avoids
+        wasting the entire search (seconds to tens of seconds on a large
+        real graph) on a sample that was never going to need a
+        counterfactual in the first place.
+        """
         try:
             original_probability = float(classifier.predict_proba([self.graph])[0])
         except Exception as exc:
-            generated.update({"status": "unscoreable", "classifier_error": str(exc)})
-            return generated
+            return {
+                "status": "unscoreable",
+                "candidate": None,
+                "edited_graph": None,
+                "classifier_error": str(exc),
+            }
 
-        generated["orig_prob"] = original_probability
         if original_probability < self.threshold:
-            generated["status"] = "not_malicious"
-            generated["scored_candidates"] = 0
+            return {
+                "status": "not_malicious",
+                "candidate": None,
+                "edited_graph": None,
+                "orig_prob": original_probability,
+                "scored_candidates": 0,
+            }
+
+        guidance_model = getattr(classifier, "model", classifier)
+        generated = self._generate_with_guidance(classifier, guidance_model)
+        generated["orig_prob"] = original_probability
+        candidates = generated["feasible_candidates"]
+        if not candidates:
             return generated
 
         scored = []
@@ -282,41 +420,62 @@ class CounterfactualSearch:
             except Exception as exc:
                 logger.warning("Unable to score candidate: %s", exc)
                 continue
-            if original_probability >= self.threshold and new_probability < self.threshold:
+            if new_probability < self.threshold:
                 generated.update({
                     "status": "completed",
                     "candidate": candidate,
                     "edited_graph": edited,
-                    "orig_prob": original_probability,
                     "new_prob": new_probability,
                     "scored_candidates": len(scored) + 1,
                 })
                 return generated
             scored.append((candidate, edited, new_probability))
 
-        flips = [
-            item for item in scored
-            if original_probability >= self.threshold and item[2] < self.threshold
-        ]
-        generated.update({"scored_candidates": len(scored)})
-        if not flips:
-            generated["status"] = "no_flip_found"
-            return generated
-
-        candidate, edited, new_probability = flips[0]
-        generated.update({
-            "status": "completed",
-            "candidate": candidate,
-            "edited_graph": edited,
-            "new_prob": new_probability,
-        })
+        generated.update({"status": "no_flip_found", "scored_candidates": len(scored)})
         return generated
+
+    @staticmethod
+    def _extract_feature_importance(classifier: Any) -> Optional[Dict[str, float]]:
+        """Best-effort extraction of per-feature importance from a trained
+        classifier, so node priority can reflect what the model actually
+        weighs -- not just the hand-picked security-relevant tokens in
+        _node_priority. Works for LightGBM (including sklearn's
+        CalibratedClassifierCV wrapper); returns None for anything else,
+        which leaves the existing heuristic-only ranking unchanged.
+        """
+        vocab = getattr(classifier, "feature_vocab", None)
+        model = getattr(classifier, "model", None)
+        if not vocab or model is None:
+            return None
+
+        estimator = model
+        if hasattr(estimator, "calibrated_classifiers_"):
+            try:
+                estimator = estimator.calibrated_classifiers_[0].estimator
+            except Exception:
+                return None
+
+        importances = None
+        if hasattr(estimator, "feature_importances_"):
+            importances = estimator.feature_importances_
+        elif hasattr(estimator, "booster_") and hasattr(estimator.booster_, "feature_importance"):
+            importances = estimator.booster_.feature_importance(importance_type="gain")
+        elif hasattr(estimator, "feature_importance"):
+            try:
+                importances = estimator.feature_importance(importance_type="gain")
+            except Exception:
+                importances = None
+
+        if importances is None or len(importances) != len(vocab):
+            return None
+        return dict(zip(vocab, importances))
 
     def _generate_with_guidance(self, classifier: Any, guidance_model: Any) -> Dict:
         started = time.perf_counter()
         trace = []
         api_vocab = getattr(classifier, "api_vocab", None)
-        candidates = self.propose(guidance_model=guidance_model, api_vocab=api_vocab)
+        feature_importance = self._extract_feature_importance(classifier)
+        candidates = self.propose(guidance_model=guidance_model, api_vocab=api_vocab, feature_importance=feature_importance)
         feasible_candidates = []
         for candidate in candidates:
             valid = self.validate(candidate)
