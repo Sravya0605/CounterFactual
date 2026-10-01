@@ -206,7 +206,8 @@ class CounterfactualSearch:
         # Add complete dependency closures, then substitutions and their
         # closures. A partial cascade is not a valid representation of the
         # deletion described by the abstract.
-        for n in nodes:
+        closure_cap = min(len(nodes), 1000)
+        for n in nodes[:closure_cap]:
             add(self._closure_candidate(n))
             api = self.graph.nodes[n].get("api", "")
             for sub in substitutions.get_substitutes(api):
