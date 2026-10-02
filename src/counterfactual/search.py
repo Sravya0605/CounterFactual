@@ -21,8 +21,8 @@ logger = logging.getLogger(__name__)
 class CounterfactualSearch:
     def __init__(self, graph: nx.DiGraph):
         self.graph = graph
-        self.max_edits = 10
-        self.max_candidates = 2000
+        self.max_edits = max(3, min(150, int(max(3, self.graph.number_of_nodes() * 0.1 + 0.999))))
+        self.max_candidates = 3000
         # Separate insertion candidate budget so deletions/substitutions
         # cannot starve insert proposals on large graphs.
         self.max_insertion_candidates = 50
@@ -40,7 +40,7 @@ class CounterfactualSearch:
         self.max_chain_starts = 8
         self.max_chain_candidates = 512
         self.chain_beam_width = 8
-        self.max_edits = max(3, min(10, int(max(3, self.graph.number_of_nodes() * 0.1 + 0.999))))
+       
 
     def _node_priority(self, node: str) -> tuple:
         data = self.graph.nodes[node]
@@ -51,6 +51,7 @@ class CounterfactualSearch:
             "scheduledtask", "regset", "regcreate", "writefile",
             "connect", "socket", "protectvirtualmemory", "mapview",
             "createprocess", "terminateprocess", "download", "encrypt",
+            "decrypt", "crypt",
         )
         semantic = int(bool(data.get("attack_id"))) * 100
         semantic += sum(token in api for token in security_tokens) * 10
@@ -193,15 +194,21 @@ class CounterfactualSearch:
 
         # Cost-1 node deletions are proposed first, but semantic ranking keeps
         # the bounded search focused on behavior rather than runtime noise.
-        for n in nodes:
+        single_deletion_cap = min(len(nodes), 1000)
+        for n in nodes[:single_deletion_cap]:
             add({"delete_nodes": [n], "substitute": {}})
 
         # Edge deletion is part of the edit vocabulary. Process edges are
         # excluded because removing one destroys execution context rather than
         # changing a behavior; feasibility still rejects broken dependencies.
+        edge_deletion_cap = 1000
+        edge_count = 0
         for u, v, data in self.graph.edges(data=True):
             if data.get("type") in {"temporal", "resource"}:
                 add({"delete_nodes": [], "delete_edges": [(u, v)], "substitute": {}})
+                edge_count += 1
+                if edge_count >= edge_deletion_cap:
+                    break
 
         # Add complete dependency closures, then substitutions and their
         # closures. A partial cascade is not a valid representation of the

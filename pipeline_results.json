@@ -1,117 +1,62 @@
 {
-  "held_out_accuracy": 0.94375,
+  "held_out_accuracy": 0.9,
   "counterfactual_source": "data\\training_reports",
   "counterfactual_output": "data\\counterfactual_reports",
   "results": [
     {
-      "file": "f7a8990967451895c005989eb9d865b1527b280fee281277e6febdd360e66297_task_1040_report.json",
-      "nodes": 3605,
-      "edges": 8418,
+      "file": "11c4e756c2ac7e3eab2cc46d325e6b4753d2258221d6f6763e2747e5fb02416d_task_96_report.json",
+      "nodes": 4885,
+      "edges": 11917,
       "status": "no_flip_found",
-      "orig_prob": 0.9711406230926514,
+      "orig_prob": 0.988175630569458,
       "new_prob": null,
       "candidate": null,
       "counterfactual_report": null,
-      "seconds": 281.79
+      "seconds": 300.67
     },
     {
-      "file": "6b82cb8b9becd746aac0583fac20c3d5982e56b8ae5d39aa2ac60a5c80275d85_task_455_report.json",
-      "nodes": 79,
-      "edges": 163,
-      "status": "no_flip_found",
-      "orig_prob": 0.9965901374816895,
+      "file": "7de041828e166e3d0a63672360897868e9b96d879aee5597a4cced308372831b_task_532_report.json",
+      "nodes": 352,
+      "edges": 781,
+      "status": "not_malicious",
+      "orig_prob": 0.08828478306531906,
       "new_prob": null,
       "candidate": null,
       "counterfactual_report": null,
-      "seconds": 2.2
+      "seconds": 0.22
     },
     {
-      "file": "21a1302b0de5030820969964eeacd4ed8b7bd5edbe7001e169f728768d5b9628_task_161_report.json",
-      "nodes": 86,
-      "edges": 189,
+      "file": "bd75e4b71bf4768562738ea8b8f961cd451ad771f75f0e120cf781abc5ff81c1_task_789_report.json",
+      "nodes": 68,
+      "edges": 135,
       "status": "no_flip_found",
-      "orig_prob": 0.9829397201538086,
+      "orig_prob": 0.8989059925079346,
       "new_prob": null,
       "candidate": null,
       "counterfactual_report": null,
-      "seconds": 1.48
+      "seconds": 1.72
     },
     {
-      "file": "1e399538c41be1c39566a00c95b78b39186510254e24562ec53a414ad74c23a1_task_149_report.json",
-      "nodes": 264,
-      "edges": 583,
+      "file": "a61a75766bc0b06141616fc7bc4a860d61541a6667b1e13d4802fde1e0ea90e1_task_691_report.json",
+      "nodes": 1157,
+      "edges": 2476,
       "status": "no_flip_found",
-      "orig_prob": 0.9947502017021179,
+      "orig_prob": 0.8738292455673218,
       "new_prob": null,
       "candidate": null,
       "counterfactual_report": null,
-      "seconds": 11.11
+      "seconds": 147.95
     },
     {
-      "file": "47a2204dd5a0c8e9540373dee70d74dbdb73bac49eb26091c0722589013239a3_task_282_report.json",
-      "nodes": 1251,
-      "edges": 2900,
+      "file": "b0ac2c5c45ad01464cafcfe863c9c7ac71b6c9034b7ceb410d3917eb2c14a6a8_task_734_report.json",
+      "nodes": 207,
+      "edges": 453,
       "status": "no_flip_found",
-      "orig_prob": 0.9976478219032288,
+      "orig_prob": 0.9324945211410522,
       "new_prob": null,
       "candidate": null,
       "counterfactual_report": null,
-      "seconds": 87.86
-    },
-    {
-      "file": "a5b6255d7858a0e175ecf03239e7f977658037cfb954af5af319a7e83ff2eeaf_task_686_report.json",
-      "nodes": 5011,
-      "edges": 12227,
-      "status": "no_flip_found",
-      "orig_prob": 0.9969666600227356,
-      "new_prob": null,
-      "candidate": null,
-      "counterfactual_report": null,
-      "seconds": 379.45
-    },
-    {
-      "file": "ef662d69f7237acdc451b8800c648de4385afcd7f0dbaa7ab8ed6def226d5e19_task_1006_report.json",
-      "nodes": 2115,
-      "edges": 5317,
-      "status": "no_flip_found",
-      "orig_prob": 0.9952640533447266,
-      "new_prob": null,
-      "candidate": null,
-      "counterfactual_report": null,
-      "seconds": 478.07
-    },
-    {
-      "file": "466993d4226ead8a555781710363a86534f42b985d1441eb30b324380c25d319_task_276_report.json",
-      "nodes": 347,
-      "edges": 762,
-      "status": "no_flip_found",
-      "orig_prob": 0.9143180847167969,
-      "new_prob": null,
-      "candidate": null,
-      "counterfactual_report": null,
-      "seconds": 20.2
-    },
-    {
-      "file": "3b42403b11b999e966158b0bea2080b863409f37cbae53845ecb1a2af67d8cde_task_244_report.json",
-      "nodes": 261,
-      "edges": 582,
-      "status": "no_flip_found",
-      "orig_prob": 0.993950366973877,
-      "new_prob": null,
-      "candidate": null,
-      "counterfactual_report": null,
-      "seconds": 13.2
-    },
-    {
-      "file": "cc6b71e9ad9098c329427da3006bc00626bf79b1b4c0523373bda7ad20eb71bf_task_863_report.json",
-      "nodes": 5755,
-      "edges": 12839,
-      "status": "no_flip_found",
-      "orig_prob": 0.9842122197151184,
-      "new_prob": null,
-      "candidate": null,
-      "counterfactual_report": null,
-      "seconds": 550.35
+      "seconds": 8.28
     }
   ]
 }

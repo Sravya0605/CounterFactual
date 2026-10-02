@@ -60,11 +60,16 @@ def list_paths(folder, max_count=None, rng=None):
     return paths
 
 
-def load_class(paths, label):
+def load_class(paths, label, max_graph_nodes=None):
     graphs, labels, names, skipped = [], [], [], []
     for i, path in enumerate(paths, 1):
         try:
-            graphs.append(build_graph(path))
+            graph = build_graph(path)
+            if max_graph_nodes is not None and graph.number_of_nodes() > max_graph_nodes:
+                skipped.append((path, f"skipped: node count {graph.number_of_nodes()} exceeds --max-graph-nodes={max_graph_nodes}"))
+                print(f"  Skipping {os.path.basename(path)}: {graph.number_of_nodes()} nodes exceeds --max-graph-nodes={max_graph_nodes} (graph object is too large to keep in the training list)")
+                continue
+            graphs.append(graph)
             labels.append(label)
             names.append(os.path.basename(path))
         except Exception as exc:
@@ -72,7 +77,7 @@ def load_class(paths, label):
         if i % 50 == 0:
             print(f"  ...{i}/{len(paths)} parsed")
     if skipped:
-        print(f"  Skipped {len(skipped)} unreadable file(s):")
+        print(f"  Skipped {len(skipped)} file(s):")
         for p, err in skipped[:5]:
             print(f"    {p}: {err}")
     return graphs, labels, names
@@ -89,6 +94,8 @@ def main():
                      help="Cap samples loaded per class -- useful for a quick smoke run before a full one")
     ap.add_argument("--max-counterfactual", type=int, default=None,
                      help="Cap how many malware reports from training_reports are tested for counterfactual flips")
+    ap.add_argument("--max-graph-nodes", type=int, default=None,
+                     help="Skip any report whose behavior graph exceeds this node count; useful for pruning pathological giant reports that blow up memory before training")
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--out", default="pipeline_results.json")
     ap.add_argument("--epochs", type=int, default=10, help="GNN backend only: training epochs")
@@ -122,11 +129,11 @@ def main():
               "nothing held out to test counterfactuals on. Lower --max-per-class or add more files.")
 
     print(f"=== Loading benign reports from {benign_dir} ===")
-    benign_graphs, benign_labels, benign_names = load_class(benign_paths, 0)
+    benign_graphs, benign_labels, benign_names = load_class(benign_paths, 0, args.max_graph_nodes)
     print(f"  {len(benign_graphs)} loaded")
 
     print(f"=== Loading malware reports from {malware_dir} ===")
-    malware_graphs, malware_labels, malware_names = load_class(malware_train_paths, 1)
+    malware_graphs, malware_labels, malware_names = load_class(malware_train_paths, 1, args.max_graph_nodes)
     print(f"  {len(malware_graphs)} loaded ({len(malware_holdout_paths)} more held out, untouched by training)")
 
     graphs = benign_graphs + malware_graphs
@@ -137,6 +144,10 @@ def main():
         return
 
     random.seed(args.seed)
+    if args.backend == "gnn":
+        import torch
+
+        torch.manual_seed(args.seed)
     idx = list(range(len(graphs)))
     random.shuffle(idx)
     split = int(len(idx) * (1 - args.test_fraction))
