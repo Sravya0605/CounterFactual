@@ -4,19 +4,26 @@ This module ranks edges by the importance of their endpoint nodes' gradients
 and returns candidates that delete high-scoring edges. It reuses
 `node_importance_via_gradients` to compute node-level scores.
 """
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 import networkx as nx
 
 from src.counterfactual.gradient_proposer import node_importance_via_gradients
 
 
-def propose_edge_deletions(model: Any, G: nx.DiGraph, top_k: int = 10, api_vocab: Any = None) -> List[Dict]:
+def propose_edge_deletions(
+    model: Any,
+    G: nx.DiGraph,
+    top_k: int = 10,
+    api_vocab: Any = None,
+    scores: Optional[List[float]] = None,
+) -> List[Dict]:
     """Return a list of candidate dicts that delete top-k important edges.
 
     Each candidate has the form {"delete_edges": [(u,v), ...], "delete_nodes": [], "substitute": {}}
     """
-    scores = node_importance_via_gradients(model, G, api_vocab=api_vocab)
+    if scores is None:
+        scores = node_importance_via_gradients(model, G, api_vocab=api_vocab)
     nodes = list(G.nodes())
     node_to_idx = {node: idx for idx, node in enumerate(nodes)}
     edge_scores: List[Tuple[Tuple[str, str], float]] = []

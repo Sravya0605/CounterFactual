@@ -5,7 +5,7 @@ import unittest
 from pathlib import Path
 import networkx as nx
 from src.counterfactual.engine import CounterfactualEngine
-from src.counterfactual.feasibility import apply_candidate, validate_candidate
+from src.counterfactual.feasibility import FeasibilityContext, apply_candidate, validate_candidate
 from src.counterfactual.tier2 import generate_synthetic_cape_report
 from src.counterfactual.search import CounterfactualSearch
 from src.classifier.heuristic_model import HeuristicClassifier
@@ -158,7 +158,7 @@ class ParserGraphTest(unittest.TestCase):
     def test_search_requires_classifier_flip_before_selecting_counterfactual(self):
         class NonFlippingClassifier:
             def predict_proba(self, graphs):
-                return [0.9]
+                return [0.9 if graphs[0].number_of_nodes() > 1 else 0.7]
 
         G = nx.DiGraph()
         G.add_node("proc:1", api="process", entity_type="process")
@@ -167,6 +167,8 @@ class ParserGraphTest(unittest.TestCase):
         result = CounterfactualSearch(graph=G).find_flip(NonFlippingClassifier())
         self.assertEqual(result["status"], "no_flip_found")
         self.assertIsNone(result["candidate"])
+        self.assertAlmostEqual(result["best_prob"], 0.7)
+        self.assertEqual(result["scored_candidates"], 1)
 
     def test_search_selects_only_a_classifier_confirmed_flip(self):
         class FlipOnDeletionClassifier:
@@ -180,6 +182,74 @@ class ParserGraphTest(unittest.TestCase):
         result = CounterfactualSearch(graph=G).find_flip(FlipOnDeletionClassifier())
         self.assertEqual(result["status"], "completed")
         self.assertEqual(result["candidate"]["delete_nodes"], ["n1"])
+
+    def test_search_reports_minimum_probability_after_first_flip(self):
+        class ProbabilityByGraphSizeClassifier:
+            def predict_proba(self, graphs):
+                node_count = graphs[0].number_of_nodes()
+                if node_count == 4:
+                    return [0.9]
+                return [0.4 if node_count == 3 else 0.2]
+
+        G = nx.DiGraph()
+        for node in ("a", "b", "c", "d"):
+            G.add_node(node, api="CreateFile")
+
+        result = CounterfactualSearch(graph=G).find_flip(
+            ProbabilityByGraphSizeClassifier()
+        )
+
+        self.assertEqual(result["status"], "completed")
+        self.assertLess(result["new_prob"], 0.5)
+        self.assertAlmostEqual(result["best_prob"], 0.2)
+        feasible_count = sum(
+            trace["valid"] for trace in result["candidate_trace"]
+        )
+        self.assertEqual(result["scored_candidates"], feasible_count)
+
+    def test_near_threshold_search_extends_best_trio(self):
+        class ProbabilityByGraphSizeClassifier:
+            def predict_proba(self, graphs):
+                node_count = graphs[0].number_of_nodes()
+                return [0.9 if node_count == 20 else 0.54 if node_count == 17 else 0.4]
+
+        G = nx.DiGraph()
+        for index in range(20):
+            G.add_node(f"n{index}", api="CreateFile")
+
+        search = CounterfactualSearch(graph=G)
+        search.max_edits = 4
+        trio = {"delete_nodes": ["n0", "n1", "n2"], "substitute": {}}
+        search._generate_with_guidance = lambda classifier, guidance_model: {
+            "status": "candidates_available",
+            "candidate": None,
+            "edited_graph": None,
+            "feasible_candidates": [trio],
+            "candidate_trace": [{"candidate": trio, "valid": True}],
+            "search": {
+                "proposed_candidates": 1,
+                "evaluated_candidates": 1,
+                "runtime_seconds": 0.0,
+            },
+            "constraint_comparison": {
+                "proposed": 1,
+                "feasible": 1,
+                "infeasible": 0,
+            },
+        }
+
+        result = search.find_flip(ProbabilityByGraphSizeClassifier())
+
+        self.assertEqual(result["status"], "completed")
+        self.assertEqual(len(result["candidate"]["delete_nodes"]), 4)
+        self.assertAlmostEqual(result["new_prob"], 0.4)
+        self.assertAlmostEqual(result["best_prob"], 0.4)
+        self.assertTrue(result["trio_extension"]["enabled"])
+        self.assertEqual(result["trio_extension"]["selected_trios"], 1)
+        self.assertEqual(result["trio_extension"]["feasible_candidates"], 17)
+        self.assertEqual(result["search"]["proposed_candidates"], 18)
+        self.assertEqual(result["search"]["evaluated_candidates"], 18)
+        self.assertEqual(result["constraint_comparison"]["feasible"], 18)
 
     def test_resource_lifetime_close_socket_is_not_an_open(self):
         from src.counterfactual.feasibility import _check_resource_lifetime
@@ -381,6 +451,42 @@ class ParserGraphTest(unittest.TestCase):
         G.add_node("use2", api="WriteFile", resources=["R"], timestamps=[4])
         self.assertTrue(validate_candidate(G, {"delete_nodes": []}))
 
+    def test_cached_deletion_validation_matches_reference_checks(self):
+        from itertools import combinations
+
+        G = nx.DiGraph()
+        G.add_node("open", api="CreateFile", entity_type="file", resources=["R"], timestamps=[1])
+        G.add_node("write", api="WriteFile", entity_type="file", resources=["R"], timestamps=[2])
+        G.add_node("close", api="CloseHandle", entity_type="file", resources=["R"], timestamps=[3])
+        G.add_node("use", api="ReadFile", entity_type="file", resources=["R"], timestamps=[4])
+        G.add_node("resource", api="unknown", entity_type="resource", state="released", resources=["R"])
+        G.add_edge("open", "write", type="resource")
+        G.add_edge("write", "close", type="resource")
+        G.add_edge("close", "use", type="resource")
+        G.add_edge("use", "resource", type="resource")
+        G.add_edge("use", "open", type="temporal")
+
+        context = FeasibilityContext(G)
+        node_ids = list(G.nodes())
+        edge_ids = list(G.edges())
+        candidates = [{"delete_nodes": []}]
+        for size in range(1, len(node_ids) + 1):
+            candidates.extend(
+                {"delete_nodes": list(nodes)}
+                for nodes in combinations(node_ids, size)
+            )
+        candidates.extend(
+            {"delete_nodes": [], "delete_edges": [edge]}
+            for edge in edge_ids
+        )
+
+        for candidate in candidates:
+            with self.subTest(candidate=candidate):
+                self.assertEqual(
+                    validate_candidate(G, candidate),
+                    validate_candidate(G, candidate, context=context),
+                )
+
     def test_temporal_order_rejects_backward_edge(self):
         G = nx.DiGraph()
         G.add_node("later", api="WriteFile", resources=[], timestamps=[5])
@@ -452,6 +558,65 @@ class ParserGraphTest(unittest.TestCase):
         data = graph_to_pyg_data(G, vocab)
         self.assertEqual(data.x.shape[0], 2)
         self.assertGreaterEqual(data.edge_attr.shape[1], 3)
+
+    def test_gnn_deletion_scorer_matches_materialized_candidate(self):
+        import torch
+        from src.classifier.gnn_harness import GNNDeletionScorer, predict_gnn_proba
+        from src.classifier.gnn_model import SimpleGCN
+
+        G = nx.DiGraph()
+        G.add_node("n1", api="CreateFile", entity_type="file", resources=["R"])
+        G.add_node("n2", api="WriteFile", entity_type="file", resources=["R"])
+        G.add_node("n3", api="CloseHandle", entity_type="file", resources=["R"])
+        G.add_edge("n1", "n2", type="resource", weight=2)
+        G.add_edge("n2", "n3", type="temporal", delay=0.5)
+        vocab = build_api_vocab([G])
+        torch.manual_seed(11)
+        feature_dim = graph_to_pyg_data(G, vocab).x.size(1)
+        model = SimpleGCN(in_channels=feature_dim, hidden=8, edge_dim=5)
+        candidate = {
+            "delete_nodes": ["n2"],
+            "delete_edges": [("n1", "n2")],
+            "substitute": {},
+        }
+        scorer = GNNDeletionScorer(model, G, vocab)
+
+        expected = predict_gnn_proba(
+            model, [apply_candidate(G, candidate)], vocab
+        )[0]
+        actual = scorer.predict_proba(candidate)
+
+        self.assertAlmostEqual(actual, expected, places=7)
+
+    def test_attention_pool_gnn_deletion_scorer_matches_materialized_candidate(self):
+        import torch
+        from src.classifier.gnn_harness import GNNDeletionScorer, predict_gnn_proba
+        from src.classifier.gnn_model import SimpleGCN
+
+        G = nx.DiGraph()
+        G.add_node("n1", api="CreateFile", entity_type="file", resources=["R"])
+        G.add_node("n2", api="WriteFile", entity_type="file", resources=["R"])
+        G.add_node("n3", api="CloseHandle", entity_type="file", resources=["R"])
+        G.add_edge("n1", "n2", type="resource", weight=2)
+        G.add_edge("n2", "n3", type="temporal", delay=0.5)
+        vocab = build_api_vocab([G])
+        torch.manual_seed(17)
+        feature_dim = graph_to_pyg_data(G, vocab).x.size(1)
+        model = SimpleGCN(
+            in_channels=feature_dim,
+            hidden=8,
+            edge_dim=5,
+            pooling="attention",
+        )
+        candidate = {"delete_nodes": ["n2"], "substitute": {}}
+        scorer = GNNDeletionScorer(model, G, vocab)
+
+        expected = predict_gnn_proba(
+            model, [apply_candidate(G, candidate)], vocab
+        )[0]
+        actual = scorer.predict_proba(candidate)
+
+        self.assertAlmostEqual(actual, expected, places=7)
 
     def test_lgbm_training_returns_calibrated_probabilities(self):
         from src.classifier.lgbm_model import train_lgbm, predict_proba

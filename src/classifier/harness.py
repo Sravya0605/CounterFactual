@@ -13,6 +13,7 @@ class ClassifierHarness:
         self.model = None
         self.feature_vocab = None
         self.api_vocab = None
+        self._gnn_deletion_scorer = None
         self.model_path = Path(model_path) if model_path else self._default_model_path()
         # Cached token→column-index map for fast single-graph numpy scoring.
         self._token_to_idx: Optional[Dict[str, int]] = None
@@ -129,7 +130,13 @@ class ClassifierHarness:
         if self.backend == "gnn":
             from src.utils.pyg_adapter import build_api_vocab
             self.api_vocab = build_api_vocab(graphs)
-            self.model = self._train_gnn(graphs, labels, epochs=kwargs.get("epochs", 10), batch_size=kwargs.get("batch_size", 16))
+            self.model = self._train_gnn(
+                graphs,
+                labels,
+                epochs=kwargs.get("epochs", 10),
+                batch_size=kwargs.get("batch_size", 16),
+                pooling=kwargs.get("pooling", "mean_max"),
+            )
             self.save_model(self.model_path)
             return self.model
         raise NotImplementedError("GNN training harness not implemented yet")
@@ -158,6 +165,37 @@ class ClassifierHarness:
                 self.ensure_trained(graphs)
             return self._predict_gnn(self.model, graphs, self.api_vocab)
         return self.model.predict_proba(graphs)
+
+    def predict_candidate_proba(self, graph: Any, candidate: Dict) -> float:
+        """Score a deletion-only GNN candidate without materializing its graph copy."""
+        if (
+            self.backend != "gnn"
+            or (candidate.get("substitute", {}) or {})
+            or (candidate.get("insert_nodes", []) or [])
+        ):
+            from src.counterfactual.feasibility import apply_candidate
+
+            return self.predict_proba([apply_candidate(graph, candidate)])[0]
+
+        if self.model is None:
+            self.ensure_trained([graph])
+        if self.api_vocab is None:
+            from src.utils.pyg_adapter import build_api_vocab
+
+            self.api_vocab = build_api_vocab([graph])
+
+        if (
+            self._gnn_deletion_scorer is None
+            or self._gnn_deletion_scorer.graph is not graph
+            or self._gnn_deletion_scorer.model is not self.model
+            or self._gnn_deletion_scorer.api_vocab is not self.api_vocab
+        ):
+            from src.classifier.gnn_harness import GNNDeletionScorer
+
+            self._gnn_deletion_scorer = GNNDeletionScorer(
+                self.model, graph, self.api_vocab
+            )
+        return self._gnn_deletion_scorer.predict_proba(candidate)
 
     def predict(self, graphs: List[Any], thresh: float = 0.5) -> List[int]:
         probs = self.predict_proba(graphs)

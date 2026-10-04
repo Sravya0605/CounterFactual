@@ -4,7 +4,7 @@ Computes node importance via gradients on a PyG GNN model's input features,
 ranks nodes by L2 gradient norm, and returns deletion/substitution candidates
 focused on the top-ranked nodes.
 """
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 import networkx as nx
 import torch
@@ -33,14 +33,21 @@ def node_importance_via_gradients(model: Any, G: nx.DiGraph, api_vocab: Any = No
     return scores
 
 
-def propose_from_gradients(model: Any, G: nx.DiGraph, top_k: int = 10, api_vocab: Any = None) -> List[Dict]:
+def propose_from_gradients(
+    model: Any,
+    G: nx.DiGraph,
+    top_k: int = 10,
+    api_vocab: Any = None,
+    scores: Optional[List[float]] = None,
+) -> List[Dict]:
     """Produce candidate edits based on top-k gradient-ranked nodes.
 
     Returns a list of candidate dicts compatible with `search.CounterfactualSearch`.
     For now, candidates are single-node deletions for top-k nodes, plus pairwise
     deletions among the top `min(5, top_k)` nodes.
     """
-    scores = node_importance_via_gradients(model, G, api_vocab=api_vocab)
+    if scores is None:
+        scores = node_importance_via_gradients(model, G, api_vocab=api_vocab)
     nodes = list(G.nodes())
     ranked = sorted(range(len(scores)), key=lambda i: scores[i], reverse=True)
     cands = []

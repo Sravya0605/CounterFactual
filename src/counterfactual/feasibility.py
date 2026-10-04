@@ -1,6 +1,5 @@
 """Tier-1 feasibility checker for structural validity."""
-from typing import Dict
-from datetime import datetime
+from typing import Dict, Optional, Set
 
 import networkx as nx
 
@@ -90,6 +89,214 @@ def candidate_cost(candidate: Dict) -> int:
     substitutions = len((candidate.get("substitute", {}) or {}).keys())
     insertions = len(candidate.get("insert_nodes", []) or [])
     return delete_nodes + delete_edges + substitutions + insertions
+
+
+def _resource_roots(G: nx.DiGraph) -> set:
+    roots = set()
+    for node, data in G.nodes(data=True):
+        for resource in data.get("resources", []) or []:
+            has_original_producer = any(
+                edge_data.get("type") == "resource"
+                and resource in (G.nodes[predecessor].get("resources", []) or [])
+                for predecessor in G.predecessors(node)
+                for edge_data in [G.get_edge_data(predecessor, node) or {}]
+            )
+            if not has_original_producer:
+                roots.add((node, resource))
+    return roots
+
+
+def _resource_is_supported(
+    G2: nx.DiGraph,
+    node,
+    resource,
+    resource_roots: set,
+    G: nx.DiGraph,
+) -> bool:
+    for predecessor in G2.predecessors(node):
+        edge_data = G2.get_edge_data(predecessor, node) or {}
+        if edge_data.get("type") == "resource":
+            predecessor_resources = G2.nodes[predecessor].get("resources", []) or []
+            if resource in predecessor_resources:
+                return True
+    if (node, resource) in resource_roots:
+        return True
+    if G2.nodes[node].get("insertion_anchor") is not None:
+        try:
+            anchor = G2.nodes[node].get("insertion_anchor")
+            if anchor and is_anchor_plausible(G, anchor, G2.nodes[node].get("api")):
+                return True
+        except Exception:
+            pass
+    return False
+
+
+class FeasibilityContext:
+    """Caches original-graph facts for repeated deletion-only validation."""
+
+    def __init__(self, graph: nx.DiGraph):
+        self.graph = graph
+        self.meaningful_nodes = {
+            node for node, data in graph.nodes(data=True)
+            if data.get("api") and data.get("api") != "unknown"
+        }
+        self.process_nodes = {
+            node for node, data in graph.nodes(data=True)
+            if str(data.get("api", "")).lower() == "process"
+        }
+
+        resource_events = {}
+        self.resource_events_by_node = {}
+        for index, (node, data) in enumerate(graph.nodes(data=True)):
+            resources = data.get("resources", []) or []
+            if not resources:
+                continue
+            timestamp = _node_timestamp(data)
+            api = data.get("api")
+            node_events = []
+            for resource in resources:
+                if not _is_stable_resource_identifier(resource):
+                    continue
+                event = (timestamp, index, node, api)
+                resource_events.setdefault(resource, []).append(event)
+                node_events.append(resource)
+            self.resource_events_by_node[node] = tuple(node_events)
+
+        self.resource_events = {
+            resource: sorted(events, key=lambda event: event[0])
+            for resource, events in resource_events.items()
+        }
+        self.invalid_resource_lifetimes = {
+            resource for resource, events in self.resource_events.items()
+            if not _resource_events_are_valid(events)
+        }
+
+        self.invalid_temporal_edges = set()
+        for source, target, edge_data in graph.edges(data=True):
+            if (
+                edge_data.get("type") == "temporal"
+                and _node_timestamp(graph.nodes[source]) > _node_timestamp(graph.nodes[target])
+            ):
+                self.invalid_temporal_edges.add((source, target))
+
+        self.invalid_lifetime_entities = set()
+        for node, data in graph.nodes(data=True):
+            if data.get("entity_type") == "resource" and (
+                not list(graph.predecessors(node))
+                or (
+                    data.get("state") == "released"
+                    and not list(graph.successors(node))
+                )
+            ):
+                self.invalid_lifetime_entities.add(node)
+
+        self.resource_roots = _resource_roots(graph)
+        self.invalid_resource_pairs = set()
+        for node, data in graph.nodes(data=True):
+            for resource in data.get("resources", []) or []:
+                if not _resource_is_supported(graph, node, resource, self.resource_roots, graph):
+                    self.invalid_resource_pairs.add((node, resource))
+
+    def has_meaningful_node(self, deleted_nodes: Set) -> bool:
+        return any(node not in deleted_nodes for node in self.meaningful_nodes)
+
+    def has_process_node(self, deleted_nodes: Set) -> bool:
+        return any(node not in deleted_nodes for node in self.process_nodes)
+
+    def check_resource_lifetime(self, deleted_nodes: Set) -> bool:
+        affected_resources = {
+            resource
+            for node in deleted_nodes
+            for resource in self.resource_events_by_node.get(node, ())
+        }
+        if self.invalid_resource_lifetimes - affected_resources:
+            return False
+        for resource in affected_resources:
+            remaining = [
+                event for event in self.resource_events[resource]
+                if event[2] not in deleted_nodes
+            ]
+            if not _resource_events_are_valid(remaining):
+                return False
+        return True
+
+    def check_temporal_order(self, deleted_nodes: Set, deleted_edges: Set) -> bool:
+        return not any(
+            source not in deleted_nodes
+            and target not in deleted_nodes
+            and (source, target) not in deleted_edges
+            for source, target in self.invalid_temporal_edges
+        )
+
+    def check_lifetime_entities(self, G2: nx.DiGraph, deleted_nodes: Set, deleted_edges: Set) -> bool:
+        affected = set()
+        for node in deleted_nodes:
+            if node not in self.graph:
+                continue
+            affected.update(self.graph.predecessors(node))
+            affected.update(self.graph.successors(node))
+        for source, target in deleted_edges:
+            if self.graph.has_edge(source, target):
+                affected.update((source, target))
+        if any(
+            node not in deleted_nodes
+            for node in self.invalid_lifetime_entities - affected
+        ):
+            return False
+        for node in affected:
+            if node in deleted_nodes or node not in G2:
+                continue
+            data = G2.nodes[node]
+            if data.get("entity_type") != "resource":
+                continue
+            if not list(G2.predecessors(node)):
+                return False
+            if data.get("state") == "released" and not list(G2.successors(node)):
+                return False
+        return True
+
+    def check_resource_support(self, G2: nx.DiGraph, deleted_nodes: Set, deleted_edges: Set) -> bool:
+        affected = set()
+        for node in deleted_nodes:
+            if node not in self.graph:
+                continue
+            affected.update(
+                target
+                for _, target, edge_data in self.graph.out_edges(node, data=True)
+                if edge_data.get("type") == "resource"
+            )
+        for source, target in deleted_edges:
+            edge_data = self.graph.get_edge_data(source, target) or {}
+            if edge_data.get("type") == "resource":
+                affected.add(target)
+
+        if any(
+            node not in deleted_nodes and node not in affected
+            for node, _ in self.invalid_resource_pairs
+        ):
+            return False
+
+        for node in affected:
+            if node in deleted_nodes or node not in G2:
+                continue
+            for resource in G2.nodes[node].get("resources", []) or []:
+                if not _resource_is_supported(
+                    G2, node, resource, self.resource_roots, self.graph
+                ):
+                    return False
+        return True
+
+
+def _resource_events_are_valid(events) -> bool:
+    is_open = True
+    for _, _, _, api in events:
+        if _matches_any(api, CLOSING_API_TOKENS):
+            is_open = False
+        elif _matches_any(api, OPENING_API_TOKENS):
+            is_open = True
+        elif not is_open:
+            return False
+    return True
 
 
 OPENING_API_TOKENS = {
@@ -220,14 +427,44 @@ def _check_temporal_order(G2: nx.DiGraph) -> bool:
     return True
 
 
-def validate_candidate(G: nx.DiGraph, candidate: Dict) -> bool:
+def _deletion_view(G: nx.DiGraph, delete_nodes: Set, delete_edges: Set) -> nx.DiGraph:
+    return nx.subgraph_view(
+        G,
+        filter_node=lambda node: node not in delete_nodes,
+        filter_edge=lambda source, target: (source, target) not in delete_edges,
+    )
+
+
+def validate_candidate(
+    G: nx.DiGraph,
+    candidate: Dict,
+    context: Optional[FeasibilityContext] = None,
+) -> bool:
     """Validate candidate edits against dependency closure and substitution rules."""
     delete_nodes = set(candidate.get("delete_nodes", []))
-    G2 = apply_candidate(G, candidate)
+    delete_edges = {
+        (edge[0], edge[1])
+        for edge in (candidate.get("delete_edges", []) or [])
+        if isinstance(edge, (list, tuple)) and len(edge) == 2
+    }
+    substitutions_to_apply = candidate.get("substitute", {}) or {}
+    insertions = candidate.get("insert_nodes", []) or []
+    deletion_only = not substitutions_to_apply and not insertions
+    if context is not None and context.graph is not G:
+        raise ValueError("FeasibilityContext must be built for the graph being validated")
+    G2 = (
+        _deletion_view(G, delete_nodes, delete_edges)
+        if context is not None and deletion_only
+        else apply_candidate(G, candidate)
+    )
     if G2.number_of_nodes() == 0:
         return False
 
-    meaningful = any((data.get("api") and data.get("api") != "unknown") for _, data in G2.nodes(data=True))
+    meaningful = (
+        context.has_meaningful_node(delete_nodes)
+        if context is not None and deletion_only
+        else any((data.get("api") and data.get("api") != "unknown") for _, data in G2.nodes(data=True))
+    )
     if not meaningful:
         return False
 
@@ -237,62 +474,54 @@ def validate_candidate(G: nx.DiGraph, candidate: Dict) -> bool:
     # check (did the edit destroy process presence that existed?), not an
     # absolute one, so it correctly leaves graphs that never modeled a
     # process node (e.g. isolated resource-dependency test fixtures) alone.
-    original_has_process = any(str(data.get("api", "")).lower() == "process" for _, data in G.nodes(data=True))
-    edited_has_process = any(str(data.get("api", "")).lower() == "process" for _, data in G2.nodes(data=True))
+    original_has_process = (
+        bool(context.process_nodes)
+        if context is not None
+        else any(str(data.get("api", "")).lower() == "process" for _, data in G.nodes(data=True))
+    )
+    edited_has_process = (
+        context.has_process_node(delete_nodes)
+        if context is not None and deletion_only
+        else any(str(data.get("api", "")).lower() == "process" for _, data in G2.nodes(data=True))
+    )
     if original_has_process and not edited_has_process:
         return False
 
-    if not _check_resource_lifetime(G2):
+    if context is not None and deletion_only:
+        valid_resource_lifetime = context.check_resource_lifetime(delete_nodes)
+    else:
+        valid_resource_lifetime = _check_resource_lifetime(G2)
+    if not valid_resource_lifetime:
         return False
 
-    if not _check_temporal_order(G2):
+    if context is not None and deletion_only:
+        valid_temporal_order = context.check_temporal_order(delete_nodes, delete_edges)
+    else:
+        valid_temporal_order = _check_temporal_order(G2)
+    if not valid_temporal_order:
         return False
 
     if not _check_argument_data_flow(G, delete_nodes, G2):
         return False
 
-    if not _check_lifetime_entities(G2):
+    if context is not None and deletion_only:
+        valid_lifetime_entities = context.check_lifetime_entities(
+            G2, delete_nodes, delete_edges
+        )
+    else:
+        valid_lifetime_entities = _check_lifetime_entities(G2)
+    if not valid_lifetime_entities:
         return False
 
-    resource_roots = set()
-    for node, data in G.nodes(data=True):
-        for resource in data.get("resources", []) or []:
-            has_original_producer = False
-            for predecessor in G.predecessors(node):
-                edge_data = G.get_edge_data(predecessor, node) or {}
-                if edge_data.get("type") != "resource":
-                    continue
-                predecessor_resources = G.nodes[predecessor].get("resources", []) or []
-                if resource in predecessor_resources:
-                    has_original_producer = True
-                    break
-            if not has_original_producer:
-                resource_roots.add((node, resource))
-
-    for node, data in G2.nodes(data=True):
-        for resource in data.get("resources", []) or []:
-            has_producer = False
-            for predecessor in G2.predecessors(node):
-                edge_data = G2.get_edge_data(predecessor, node) or {}
-                if edge_data.get("type") != "resource":
-                    continue
-                predecessor_resources = G2.nodes[predecessor].get("resources", []) or []
-                if resource in predecessor_resources:
-                    has_producer = True
-                    break
-            if has_producer or (node, resource) in resource_roots:
-                continue
-            # Allow resources that originate from synthetic insertions if
-            # the insertion was explicitly anchored and judged plausible.
-            if G2.nodes[node].get("insertion_anchor") is not None:
-                # Ensure the anchor plausibility rule holds.
-                try:
-                    anchor = G2.nodes[node].get("insertion_anchor")
-                    if anchor and is_anchor_plausible(G, anchor, G2.nodes[node].get("api")):
-                        continue
-                except Exception:
-                    pass
+    if context is not None and deletion_only:
+        if not context.check_resource_support(G2, delete_nodes, delete_edges):
             return False
+    else:
+        resource_roots = _resource_roots(G)
+        for node, data in G2.nodes(data=True):
+            for resource in data.get("resources", []) or []:
+                if not _resource_is_supported(G2, node, resource, resource_roots, G):
+                    return False
 
     for node, api in (candidate.get("substitute", {}) or {}).items():
         original_api = G.nodes[node].get("api") if node in G.nodes else None
@@ -303,7 +532,6 @@ def validate_candidate(G: nx.DiGraph, candidate: Dict) -> bool:
 
     # Validate insertions: anchors and inserted APIs must be plausible according to
     # the insertion heuristics.
-    insertions = candidate.get("insert_nodes", []) or []
     if insertions:
         for ins in insertions:
             anchor = ins.get("anchor")
@@ -322,7 +550,12 @@ def validate_candidate(G: nx.DiGraph, candidate: Dict) -> bool:
     # API category, not "this is an anchor". Filtering by entity_type here
     # let a deleted child process's own injection *events* survive, orphaned
     # from any process, by mistakenly treating them as exempt anchors.
-    process_nodes = [node for node, data in G2.nodes(data=True) if str(data.get("api", "")).lower() == "process"]
+    if context is not None and deletion_only:
+        process_nodes = [
+            node for node in context.process_nodes if node not in delete_nodes
+        ]
+    else:
+        process_nodes = [node for node, data in G2.nodes(data=True) if str(data.get("api", "")).lower() == "process"]
     if process_nodes:
         for node in process_nodes:
             child_pid = G2.nodes[node].get("process_id")

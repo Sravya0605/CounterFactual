@@ -100,6 +100,8 @@ def main():
     ap.add_argument("--out", default="pipeline_results.json")
     ap.add_argument("--epochs", type=int, default=10, help="GNN backend only: training epochs")
     ap.add_argument("--batch-size", type=int, default=16, help="GNN backend only: batch size")
+    ap.add_argument("--gnn-pooling", choices=["mean_max", "attention"], default="mean_max",
+                     help="GNN graph pooling method (default preserves mean+max pooling)")
     ap.add_argument("--rounds", type=int, default=100, help="lgbm backend only: boosting rounds")
     args = ap.parse_args()
 
@@ -157,7 +159,8 @@ def main():
     harness = ClassifierHarness(backend=args.backend, model_path=f"models/pipeline_{args.backend}.pkl")
     if args.backend == "gnn":
         harness.train([graphs[i] for i in train_idx], [labels[i] for i in train_idx],
-                       epochs=args.epochs, batch_size=args.batch_size)
+                       epochs=args.epochs, batch_size=args.batch_size,
+                       pooling=args.gnn_pooling)
     else:
         harness.train([graphs[i] for i in train_idx], [labels[i] for i in train_idx],
                        rounds=args.rounds)
@@ -223,6 +226,7 @@ def main():
                 "edges": out.get("graph_edges"),
                 "status": res.get("status"),
                 "orig_prob": res.get("orig_prob"),
+                "best_prob": res.get("best_prob"),
                 "new_prob": res.get("new_prob"),
                 "candidate": res.get("candidate"),
                 "counterfactual_report": saved_path,
@@ -239,7 +243,8 @@ def main():
         results.append(row)
         print(
             f"  [{i}/{len(cf_paths)}] {name}: {row.get('status')}  "
-            f"orig={row.get('orig_prob')}  new={row.get('new_prob')}  "
+            f"orig={row.get('orig_prob')}  best={row.get('best_prob')}  "
+            f"new={row.get('new_prob')}  "
             f"saved={row.get('counterfactual_report')} ({row['seconds']}s)"
         )
 

@@ -1,6 +1,7 @@
 """Counterfactual search engine skeleton."""
 import logging
 import time
+from itertools import combinations, islice
 from typing import Any, Dict, List, Optional
 
 import networkx as nx
@@ -31,6 +32,10 @@ class CounterfactualSearch:
         self.enforce_feasibility = True
         self.pair_node_limit = 32
         self.max_pair_candidates = 512
+        self.max_triple_candidates = 512
+        self.trio_extension_margin = 0.05
+        self.trio_extension_limit = 3
+        self.trio_extension_node_limit = 48
 
         # Beyond-pair combination search.
         #
@@ -40,6 +45,8 @@ class CounterfactualSearch:
         self.max_chain_starts = 8
         self.max_chain_candidates = 512
         self.chain_beam_width = 8
+        self.gradient_combination_node_limit = 24
+        self._feasibility_context = None
        
 
     def _node_priority(self, node: str) -> tuple:
@@ -73,7 +80,16 @@ class CounterfactualSearch:
             if raw > 0:
                 importance_boost = round((raw / max_importance) * 50)
 
-        return (semantic + importance_boost - routine_penalty, -len(api), str(node))
+        heuristic_priority = semantic + importance_boost - routine_penalty
+        gradient_importance = getattr(self, "_node_gradient_importance", None)
+        if gradient_importance is not None:
+            return (
+                gradient_importance.get(node, 0.0),
+                heuristic_priority,
+                -len(api),
+                str(node),
+            )
+        return (heuristic_priority, 0.0, -len(api), str(node))
 
     def _candidate_nodes(self) -> List[str]:
         # Exclude the process ANCHOR node (identified by its literal api
@@ -161,6 +177,7 @@ class CounterfactualSearch:
         if feature_importance:
             self.feature_importance = feature_importance
             self._max_feature_importance = max(feature_importance.values()) if feature_importance else None
+        self._node_gradient_importance = None
         nodes = self._candidate_nodes()
         seen = set()
 
@@ -174,22 +191,51 @@ class CounterfactualSearch:
 
         if guidance_model is not None and hasattr(guidance_model, "parameters"):
             try:
-                from src.counterfactual.gradient_proposer import propose_from_gradients
+                from src.counterfactual.gradient_proposer import (
+                    node_importance_via_gradients,
+                    propose_from_gradients,
+                )
                 from src.counterfactual.edge_mask_proposer import propose_edge_deletions
 
+                gradient_scores = node_importance_via_gradients(
+                    guidance_model, self.graph, api_vocab=self.api_vocab
+                )
+                graph_nodes = list(self.graph.nodes())
+                self._node_gradient_importance = {
+                    node: float(score)
+                    for node, score in zip(graph_nodes, gradient_scores)
+                }
+                nodes = self._candidate_nodes()
+
                 guided = propose_from_gradients(
-                    guidance_model, self.graph, top_k=50, api_vocab=self.api_vocab
+                    guidance_model,
+                    self.graph,
+                    top_k=50,
+                    api_vocab=self.api_vocab,
+                    scores=gradient_scores,
                 )
                 guided.extend(
                     propose_edge_deletions(
-                        guidance_model, self.graph, top_k=25, api_vocab=self.api_vocab
+                        guidance_model,
+                        self.graph,
+                        top_k=25,
+                        api_vocab=self.api_vocab,
+                        scores=gradient_scores,
                     )
                 )
                 for candidate in guided:
                     add(candidate)
                     for node in candidate.get("delete_nodes", []):
                         add(self._closure_candidate(node))
+
+                gradient_pool = nodes[:self.gradient_combination_node_limit]
+                for node_combo in islice(
+                    combinations(gradient_pool, 3), self.max_triple_candidates
+                ):
+                    add({"delete_nodes": list(node_combo), "substitute": {}})
             except Exception as exc:
+                self._node_gradient_importance = None
+                nodes = self._candidate_nodes()
                 logger.warning("Gradient-guided proposals unavailable: %s", exc)
 
         # Cost-1 node deletions are proposed first, but semantic ranking keeps
@@ -352,7 +398,11 @@ class CounterfactualSearch:
     def validate(self, candidate: Dict) -> bool:
         if not self.enforce_feasibility:
             return True
-        return feasibility.validate_candidate(self.graph, candidate)
+        if self._feasibility_context is None:
+            self._feasibility_context = feasibility.FeasibilityContext(self.graph)
+        return feasibility.validate_candidate(
+            self.graph, candidate, context=self._feasibility_context
+        )
 
     def generate_candidates(self) -> Dict:
         """Generate and validate candidates without calling a classifier."""
@@ -420,26 +470,163 @@ class CounterfactualSearch:
         if not candidates:
             return generated
 
-        scored = []
+        scored_count = 0
+        best_probability = None
+        first_flipping_result = None
+        scored_probabilities = {}
+        fast_gnn_scoring = (
+            getattr(classifier, "backend", None) == "gnn"
+            and callable(getattr(classifier, "predict_candidate_proba", None))
+        )
         for candidate in candidates:
-            edited = self._apply_candidate(candidate)
+            edited = None
             try:
-                new_probability = float(classifier.predict_proba([edited])[0])
+                deletion_only = not (candidate.get("substitute", {}) or {}) and not (
+                    candidate.get("insert_nodes", []) or []
+                )
+                if fast_gnn_scoring and deletion_only:
+                    new_probability = float(
+                        classifier.predict_candidate_proba(self.graph, candidate)
+                    )
+                else:
+                    edited = self._apply_candidate(candidate)
+                    new_probability = float(classifier.predict_proba([edited])[0])
             except Exception as exc:
                 logger.warning("Unable to score candidate: %s", exc)
                 continue
+            if best_probability is None or new_probability < best_probability:
+                best_probability = new_probability
+            scored_probabilities[self._candidate_key(candidate)] = new_probability
             if new_probability < self.threshold:
-                generated.update({
-                    "status": "completed",
-                    "candidate": candidate,
-                    "edited_graph": edited,
-                    "new_prob": new_probability,
-                    "scored_candidates": len(scored) + 1,
-                })
-                return generated
-            scored.append((candidate, edited, new_probability))
+                if edited is None:
+                    edited = self._apply_candidate(candidate)
+                if first_flipping_result is None:
+                    first_flipping_result = {
+                        "candidate": candidate,
+                        "edited_graph": edited,
+                        "new_prob": new_probability,
+                    }
+            scored_count += 1
 
-        generated.update({"status": "no_flip_found", "scored_candidates": len(scored)})
+        extension_stats = {
+            "enabled": False,
+            "selected_trios": 0,
+            "checked_candidates": 0,
+            "feasible_candidates": 0,
+        }
+        if (
+            first_flipping_result is None
+            and best_probability is not None
+            and best_probability <= self.threshold + self.trio_extension_margin
+        ):
+            extension_stats["enabled"] = True
+            deletion_trios = [
+                candidate
+                for candidate in candidates
+                if len(candidate.get("delete_nodes", []) or []) == 3
+                and not (candidate.get("delete_edges", []) or [])
+                and not (candidate.get("substitute", {}) or {})
+                and not (candidate.get("insert_nodes", []) or [])
+            ]
+            scored_trios = sorted(
+                (
+                    (scored_probabilities[self._candidate_key(candidate)], candidate)
+                    for candidate in deletion_trios
+                    if self._candidate_key(candidate) in scored_probabilities
+                ),
+                key=lambda item: item[0],
+            )[:self.trio_extension_limit]
+            extension_stats["selected_trios"] = len(scored_trios)
+
+            pool = self._candidate_nodes()[:self.trio_extension_node_limit]
+            existing_keys = {self._candidate_key(candidate) for candidate in candidates}
+            extension_candidates = []
+            for _, trio in scored_trios:
+                trio_nodes = set(trio.get("delete_nodes", []) or [])
+                for node in pool:
+                    if node in trio_nodes:
+                        continue
+                    extended = {
+                        "delete_nodes": sorted(trio_nodes | {node}, key=str),
+                        "substitute": {},
+                    }
+                    if not self._within_edit_budget(extended):
+                        continue
+                    key = self._candidate_key(extended)
+                    if key in existing_keys:
+                        continue
+                    existing_keys.add(key)
+                    extension_candidates.append(extended)
+
+            feasible_extensions = []
+            extension_validation_started = time.perf_counter()
+            for candidate in extension_candidates:
+                valid = self.validate(candidate)
+                generated["candidate_trace"].append({
+                    "candidate": candidate,
+                    "valid": valid,
+                })
+                if valid:
+                    feasible_extensions.append(candidate)
+            extension_validation_seconds = time.perf_counter() - extension_validation_started
+            extension_stats["checked_candidates"] = len(extension_candidates)
+            extension_stats["feasible_candidates"] = len(feasible_extensions)
+            extension_stats["validation_seconds"] = round(
+                extension_validation_seconds, 6
+            )
+            generated["search"]["proposed_candidates"] += len(extension_candidates)
+            generated["search"]["evaluated_candidates"] += len(extension_candidates)
+            generated["search"]["runtime_seconds"] = round(
+                generated["search"]["runtime_seconds"]
+                + extension_validation_seconds,
+                6,
+            )
+            generated["constraint_comparison"]["proposed"] += len(extension_candidates)
+            generated["constraint_comparison"]["feasible"] += len(feasible_extensions)
+            generated["constraint_comparison"]["infeasible"] += (
+                len(extension_candidates) - len(feasible_extensions)
+            )
+
+            for candidate in feasible_extensions:
+                edited = None
+                try:
+                    if fast_gnn_scoring:
+                        probability = float(
+                            classifier.predict_candidate_proba(self.graph, candidate)
+                        )
+                    else:
+                        edited = self._apply_candidate(candidate)
+                        probability = float(classifier.predict_proba([edited])[0])
+                except Exception as exc:
+                    logger.warning("Unable to score trio-extension candidate: %s", exc)
+                    continue
+                scored_count += 1
+                if best_probability is None or probability < best_probability:
+                    best_probability = probability
+                if probability < self.threshold and first_flipping_result is None:
+                    if edited is None:
+                        edited = self._apply_candidate(candidate)
+                    first_flipping_result = {
+                        "candidate": candidate,
+                        "edited_graph": edited,
+                        "new_prob": probability,
+                    }
+
+        generated["trio_extension"] = extension_stats
+        if first_flipping_result is not None:
+            generated.update({
+                "status": "completed",
+                **first_flipping_result,
+                "best_prob": best_probability,
+                "scored_candidates": scored_count,
+            })
+            return generated
+
+        generated.update({
+            "status": "no_flip_found",
+            "scored_candidates": scored_count,
+            "best_prob": best_probability,
+        })
         return generated
 
     @staticmethod
@@ -495,6 +682,11 @@ class CounterfactualSearch:
             "candidate": None,
             "edited_graph": None,
             "feasible_candidates": feasible_candidates,
+            "constraint_comparison": {
+                "proposed": len(candidates),
+                "feasible": len(feasible_candidates),
+                "infeasible": len(candidates) - len(feasible_candidates),
+            },
         }
         result.update(self._run_metadata(trace, started, len(candidates)))
         return result
