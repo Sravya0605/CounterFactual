@@ -30,7 +30,11 @@ def apply_candidate(G: nx.DiGraph, candidate: Dict) -> nx.DiGraph:
             original_resources = list(G.nodes[node].get("resources", []) or []) if node in G.nodes else []
             from src.counterfactual.substitutions import update_resources_for_substitution
 
-            G2.nodes[node]["resources"] = update_resources_for_substitution(api, original_resources)
+            G2.nodes[node]["resources"] = update_resources_for_substitution(
+                api,
+                original_resources,
+                original_api=G.nodes[node].get("api") if node in G.nodes else None,
+            )
     # Handle synthetic insertions: create new nodes anchored to an existing
     # anchor node. Insertions use the schema: candidate["insert_nodes"] = [
     # {"anchor": node_id, "api": api_name, "entity_type": ..., "resources": [...]}, ...]
@@ -487,6 +491,11 @@ def validate_candidate(
     if original_has_process and not edited_has_process:
         return False
 
+    for node, api in substitutions_to_apply.items():
+        original_api = G.nodes[node].get("api") if node in G.nodes else None
+        if original_api is None or api not in get_substitutes(original_api):
+            return False
+
     if context is not None and deletion_only:
         valid_resource_lifetime = context.check_resource_lifetime(delete_nodes)
     else:
@@ -518,17 +527,19 @@ def validate_candidate(
             return False
     else:
         resource_roots = _resource_roots(G)
+        # Substitutions replace resource identifiers with target-typed
+        # placeholders. Treat only those newly assigned resources as rooted
+        # at the replacement event; consumers still need matching provenance.
+        for node in substitutions_to_apply:
+            if node in G2:
+                resource_roots.update(
+                    (node, resource)
+                    for resource in G2.nodes[node].get("resources", []) or []
+                )
         for node, data in G2.nodes(data=True):
             for resource in data.get("resources", []) or []:
                 if not _resource_is_supported(G2, node, resource, resource_roots, G):
                     return False
-
-    for node, api in (candidate.get("substitute", {}) or {}).items():
-        original_api = G.nodes[node].get("api") if node in G.nodes else None
-        if original_api is None:
-            return False
-        if api not in get_substitutes(original_api):
-            return False
 
     # Validate insertions: anchors and inserted APIs must be plausible according to
     # the insertion heuristics.

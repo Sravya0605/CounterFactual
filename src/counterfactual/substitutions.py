@@ -34,6 +34,13 @@ _API_RESOURCE_TYPE: Dict[str, str] = {
     "RegSetValue":         "registry_key",
     "NtSetValueKey":       "registry_key",
     "ZwSetValueKey":       "registry_key",
+    "RegOpenKeyExA":       "registry_key",
+    "RegOpenKeyExW":       "registry_key",
+    "NtOpenKey":           "registry_key",
+    "NtOpenKeyEx":         "registry_key",
+    "RegCreateKeyExA":     "registry_key",
+    "RegCreateKeyExW":     "registry_key",
+    "NtCreateKey":         "registry_key",
     # Persistence – scheduled task
     "CreateScheduledTask": "scheduled_task",
     "ITaskScheduler":      "scheduled_task",
@@ -46,9 +53,12 @@ _API_RESOURCE_TYPE: Dict[str, str] = {
     # Injection – thread
     "CreateRemoteThread":  "remote_thread",
     "CreateRemoteThreadEx":"remote_thread",
+    "NtCreateThreadEx":    "remote_thread",
     "NtQueueApcThread":    "apc_thread",
     "NtQueueApcThreadEx":  "apc_thread",
     "RtlCreateUserThread": "remote_thread",
+    "OpenProcess":         "process_handle",
+    "NtOpenProcess":       "process_handle",
     # Injection – memory
     "NtWriteVirtualMemory":"virtual_memory",
     "WriteProcessMemory":  "virtual_memory",
@@ -60,6 +70,8 @@ _API_RESOURCE_TYPE: Dict[str, str] = {
     "NtCreateFile":        "file_path",
     "NtWriteFile":         "file_path",
     "WriteFile":           "file_path",
+    "NtReadFile":          "file_path",
+    "ReadFile":            "file_path",
     # Network/C2
     "WinHttpOpen":         "http_session",
     "InternetOpenA":       "http_session",
@@ -79,6 +91,7 @@ _RESOURCE_PLACEHOLDER: Dict[str, str] = {
     "service_name":      "[SubstitutedService]",
     "file_path":         "C:\\Users\\Public\\[substituted]",
     "remote_thread":     "[remote_thread_handle]",
+    "process_handle":    "[process_handle]",
     "apc_thread":        "[apc_thread_handle]",
     "virtual_memory":    "[virtual_memory_region]",
     "mapped_section":    "[mapped_section_handle]",
@@ -92,16 +105,14 @@ _RESOURCE_PLACEHOLDER: Dict[str, str] = {
 def update_resources_for_substitution(
     api_name: str,
     original_resources: Optional[List[str]] = None,
+    original_api: Optional[str] = None,
 ) -> List[str]:
     """Return a resource list appropriate for the substituted API.
 
-    Rather than prefixing the original resource strings (which produces
-    semantically invalid values such as
-    ``createscheduledtask:HKCU\\...\\Run`` -- a scheduled task claiming a
-    registry key path as its resource), look up the *resource type* of the
-    target API and return a neutral placeholder of that type. If the
-    original resource list is empty, return a single placeholder so the
-    substituted node still has a resource slot.
+    Preserve identifiers when the original and replacement APIs operate on
+    the same resource type, so existing resource edges remain meaningful.
+    For cross-type substitutions, use a target-typed placeholder rather than
+    attaching a registry path to a scheduled task, for example.
     """
     resource_type = _API_RESOURCE_TYPE.get(api_name)
     if resource_type is None:
@@ -111,12 +122,16 @@ def update_resources_for_substitution(
 
     placeholder = _RESOURCE_PLACEHOLDER.get(resource_type, f"[{resource_type}]")
 
+    if (
+        original_api is not None
+        and _API_RESOURCE_TYPE.get(original_api) == resource_type
+        and original_resources
+    ):
+        return list(original_resources)
+
     if not original_resources:
         return [placeholder]
 
-    # Preserve the count of resource slots but replace their content with
-    # type-appropriate placeholders so the classifier sees a plausible
-    # resource list for the substituted API.
     return [placeholder] * len(original_resources)
 
 
@@ -130,6 +145,15 @@ SUBSTITUTION_LIBRARY: Dict[str, List[str]] = {
     "CreateService":        ["RegSetValue", "CreateScheduledTask"],
     "CreateScheduledTask":  ["RegSetValue", "CreateService"],
 
+    # Registry key open/create variants observed throughout the report corpus.
+    "RegOpenKeyExA":        ["RegOpenKeyExW", "NtOpenKey", "NtOpenKeyEx"],
+    "RegOpenKeyExW":        ["RegOpenKeyExA", "NtOpenKey", "NtOpenKeyEx"],
+    "NtOpenKey":            ["RegOpenKeyExA", "RegOpenKeyExW", "NtOpenKeyEx"],
+    "NtOpenKeyEx":          ["RegOpenKeyExA", "RegOpenKeyExW", "NtOpenKey"],
+    "RegCreateKeyExA":      ["RegCreateKeyExW", "NtCreateKey"],
+    "RegCreateKeyExW":      ["RegCreateKeyExA", "NtCreateKey"],
+    "NtCreateKey":          ["RegCreateKeyExA", "RegCreateKeyExW"],
+
     # ── Persistence: startup-folder file copy (lateral to the above) ───────
     # CopyFileW / MoveFileW to the Startup folder achieves registry-equivalent
     # auto-run persistence on login (T1547.001).
@@ -141,10 +165,13 @@ SUBSTITUTION_LIBRARY: Dict[str, List[str]] = {
     # traces.  CreateRemoteThreadEx is the extended form of CreateRemoteThread
     # and is treated as its alias here.
     "CreateRemoteThread":   ["NtQueueApcThread", "RtlCreateUserThread"],
-    "CreateRemoteThreadEx": ["NtQueueApcThread", "RtlCreateUserThread"],
+    "CreateRemoteThreadEx": ["NtQueueApcThread", "RtlCreateUserThread", "NtCreateThreadEx"],
+    "NtCreateThreadEx":     ["CreateRemoteThreadEx"],
     "NtQueueApcThread":     ["CreateRemoteThread", "RtlCreateUserThread"],
     "NtQueueApcThreadEx":   ["CreateRemoteThread", "RtlCreateUserThread"],
     "RtlCreateUserThread":  ["CreateRemoteThread", "NtQueueApcThread"],
+    "OpenProcess":          ["NtOpenProcess"],
+    "NtOpenProcess":        ["OpenProcess"],
 
     # ── Memory write: user-space WriteProcessMemory ↔ NT-layer NtWrite ─────
     "WriteProcessMemory":   ["NtWriteVirtualMemory"],
@@ -161,6 +188,8 @@ SUBSTITUTION_LIBRARY: Dict[str, List[str]] = {
     # ── File write: Win32 WriteFile ↔ NT NtWriteFile ────────────────────────
     "WriteFile":            ["NtWriteFile"],
     "NtWriteFile":          ["WriteFile"],
+    "ReadFile":             ["NtReadFile"],
+    "NtReadFile":           ["ReadFile"],
 
     # ── Network/C2: WinHTTP ↔ WinINet (both achieve HTTP C2) ────────────────
     "WinHttpOpen":          ["InternetOpenA", "InternetOpenW"],
@@ -185,6 +214,24 @@ SUBSTITUTION_PROVENANCE: Dict[Tuple[str, str], str] = {
     ("CreateService", "CreateScheduledTask"):"service ↔ scheduled-task persistence (both T1543/T1053)",
     ("CreateScheduledTask", "RegSetValue"):  "scheduled-task ↔ registry run-key (T1053/T1547)",
     ("CreateScheduledTask", "CreateService"):"scheduled-task ↔ service install (T1053/T1543)",
+    ("RegOpenKeyExA", "RegOpenKeyExW"): "ANSI ↔ Unicode registry key open",
+    ("RegOpenKeyExA", "NtOpenKey"): "Win32 ↔ NT registry key open",
+    ("RegOpenKeyExA", "NtOpenKeyEx"): "Win32 ↔ extended NT registry key open",
+    ("RegOpenKeyExW", "RegOpenKeyExA"): "Unicode ↔ ANSI registry key open",
+    ("RegOpenKeyExW", "NtOpenKey"): "Win32 ↔ NT registry key open",
+    ("RegOpenKeyExW", "NtOpenKeyEx"): "Win32 ↔ extended NT registry key open",
+    ("NtOpenKey", "RegOpenKeyExA"): "NT ↔ ANSI Win32 registry key open",
+    ("NtOpenKey", "RegOpenKeyExW"): "NT ↔ Unicode Win32 registry key open",
+    ("NtOpenKey", "NtOpenKeyEx"): "NT registry key open variants",
+    ("NtOpenKeyEx", "RegOpenKeyExA"): "extended NT ↔ ANSI Win32 registry key open",
+    ("NtOpenKeyEx", "RegOpenKeyExW"): "extended NT ↔ Unicode Win32 registry key open",
+    ("NtOpenKeyEx", "NtOpenKey"): "NT registry key open variants",
+    ("RegCreateKeyExA", "RegCreateKeyExW"): "ANSI ↔ Unicode registry key creation",
+    ("RegCreateKeyExA", "NtCreateKey"): "Win32 ↔ NT registry key creation",
+    ("RegCreateKeyExW", "RegCreateKeyExA"): "Unicode ↔ ANSI registry key creation",
+    ("RegCreateKeyExW", "NtCreateKey"): "Win32 ↔ NT registry key creation",
+    ("NtCreateKey", "RegCreateKeyExA"): "NT ↔ ANSI Win32 registry key creation",
+    ("NtCreateKey", "RegCreateKeyExW"): "NT ↔ Unicode Win32 registry key creation",
     ("CopyFileW", "RegSetValue"):            "startup-folder copy ↔ registry run-key (both T1547)",
     ("CopyFileW", "CreateScheduledTask"):    "startup-folder copy ↔ scheduled-task (T1547/T1053)",
     ("MoveFileW", "RegSetValue"):            "startup-folder move ↔ registry run-key (both T1547)",
@@ -193,12 +240,16 @@ SUBSTITUTION_PROVENANCE: Dict[Tuple[str, str], str] = {
     ("CreateRemoteThread", "RtlCreateUserThread"):   "remote-thread ↔ user-thread injection (T1055.003)",
     ("CreateRemoteThreadEx", "NtQueueApcThread"):    "extended remote-thread ↔ APC injection",
     ("CreateRemoteThreadEx", "RtlCreateUserThread"): "extended remote-thread ↔ user-thread injection",
+    ("CreateRemoteThreadEx", "NtCreateThreadEx"): "Win32 ↔ NT remote-thread creation",
+    ("NtCreateThreadEx", "CreateRemoteThreadEx"): "NT ↔ Win32 remote-thread creation",
     ("NtQueueApcThread", "CreateRemoteThread"):      "APC ↔ remote-thread injection (T1055.004/T1055.003)",
     ("NtQueueApcThread", "RtlCreateUserThread"):     "APC ↔ user-thread injection",
     ("NtQueueApcThreadEx", "CreateRemoteThread"):    "extended APC ↔ remote-thread injection",
     ("NtQueueApcThreadEx", "RtlCreateUserThread"):   "extended APC ↔ user-thread injection",
     ("RtlCreateUserThread", "CreateRemoteThread"):   "user-thread ↔ remote-thread injection",
     ("RtlCreateUserThread", "NtQueueApcThread"):     "user-thread ↔ APC injection",
+    ("OpenProcess", "NtOpenProcess"): "Win32 ↔ NT process open",
+    ("NtOpenProcess", "OpenProcess"): "NT ↔ Win32 process open",
     ("WriteProcessMemory", "NtWriteVirtualMemory"):  "Win32 ↔ NT-layer memory write (same syscall path)",
     ("NtWriteVirtualMemory", "WriteProcessMemory"):  "NT-layer ↔ Win32 memory write",
     ("MapViewOfFile", "NtMapViewOfSection"):         "Win32 ↔ NT-layer section map (T1055.001)",
@@ -207,6 +258,8 @@ SUBSTITUTION_PROVENANCE: Dict[Tuple[str, str], str] = {
     ("NtAllocateVirtualMemory", "VirtualAllocEx"):   "NT-layer ↔ Win32 virtual alloc",
     ("WriteFile", "NtWriteFile"):                    "Win32 ↔ NT-layer file write",
     ("NtWriteFile", "WriteFile"):                    "NT-layer ↔ Win32 file write",
+    ("ReadFile", "NtReadFile"): "Win32 ↔ NT-layer file read",
+    ("NtReadFile", "ReadFile"): "NT-layer ↔ Win32 file read",
     ("WinHttpOpen", "InternetOpenA"):                "WinHTTP ↔ WinINet HTTP session (T1071.001)",
     ("WinHttpOpen", "InternetOpenW"):                "WinHTTP ↔ WinINet HTTP session (unicode) (T1071.001)",
     ("InternetOpenA", "WinHttpOpen"):                "WinINet ↔ WinHTTP HTTP session",
@@ -232,6 +285,10 @@ API_ALIASES: Dict[str, str] = {
     "ntsetvaluekey":          "RegSetValue",
     "regsetvaluea":           "RegSetValue",
     "regsetvaluew":           "RegSetValue",
+    "regopenkeyexa":          "RegOpenKeyExA",
+    "regopenkeyexw":          "RegOpenKeyExW",
+    "regcreatekeyexa":        "RegCreateKeyExA",
+    "regcreatekeyexw":        "RegCreateKeyExW",
     # CreateRemoteThread variants
     "createremotethreadex":   "CreateRemoteThread",
     # NtQueueApcThread variants

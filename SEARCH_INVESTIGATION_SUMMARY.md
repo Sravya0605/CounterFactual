@@ -251,10 +251,49 @@ On this small sample, attention pooling was worse by **0.125 accuracy** and
 to the default architecture. The result is preliminary and does not establish
 that attention pooling is inferior on a larger, independently selected split.
 
-Substitution-library expansion remains gated: none of the sampled proposed
-substitutions passed resource-provenance feasibility, so increasing the
-library before resolving the semantics would only increase rejected
-candidates.
+### Substitution feasibility and library coverage
+
+The earlier zero-feasible substitution result exposed two coupled issues:
+common report APIs were absent from the hand-curated library, and
+`apply_candidate()` replaced even same-type resource identifiers with generic
+placeholders. That broke existing resource edges for Win32/NT API equivalents.
+Substitution application now preserves identifiers when source and target
+APIs have the same resource type. Cross-type replacements still receive a
+target-typed placeholder, rooted only at the replaced event; a downstream
+consumer of the old resource remains unsupported and is rejected. Tests cover
+both behaviors.
+
+The library now includes registry key open/create variants, Win32/NT process
+and thread opens/creation, and file read equivalents. Substitution feasibility
+on the same report samples is now:
+
+| Report | Proposed substitutions | Feasible | Best feasible probability |
+|---|---:|---:|---:|
+| task584 | 75 | 74 | 0.876961350 |
+| task42 | 67 | 63 | 0.996887267 |
+| task719 | 1,848 | 1,843 | Not exhaustively scored |
+
+The best feasible task584 substitution was `n81: NtMapViewOfSection ->
+MapViewOfFile`; task42's was `n9: NtOpenKeyEx -> RegOpenKeyExW`. For task719,
+the high feasible count demonstrates the rules operate on a large graph, but
+the full candidate set was not scored because materializing and classifying
+each edited 11,833-node graph is expensive. Scoring a seeded 12-candidate
+sample did not complete within **600 seconds** and was stopped; task719
+substitution score impact therefore remains unmeasured.
+
+The full `find_flip()` regression check after expanding substitutions retained
+the key prior outcomes: task584 still completed with the `{n4,n51,n68,n93}`
+quartet (`new_prob` **0.459998608**, `best_prob` **0.459308833**), while
+task42 remained `no_flip_found` with `best_prob` **0.971576810**. The expanded
+search scored **449** and **456** feasible candidates respectively; neither
+the substitution proposals nor the new validator path displaced those
+results. All **62** directed library pairs have provenance entries.
+
+These changes make substitution candidates available and feasibility-checked;
+they do not claim every listed pair is behaviorally identical for every
+trace. The library's equivalence rationale remains explicit in provenance,
+and broader behavioral validation is still appropriate before interpreting
+substitution wins as executable counterfactuals.
 
 ## Caveats and interpretation
 
@@ -281,7 +320,11 @@ candidates.
   node ranking, bounded triple proposals, bounded near-threshold trio
   extensions, exhaustive `best_prob` scoring.
 - [src/counterfactual/feasibility.py](src/counterfactual/feasibility.py):
-  cached graph invariants for deletion-focused validation.
+  cached graph invariants for deletion-focused validation, same-type
+  substitution resource preservation, and constrained cross-type placeholders.
+- [src/counterfactual/substitutions.py](src/counterfactual/substitutions.py):
+  expanded common registry, file-read, process-open, and thread-creation
+  substitutions with resource typing and provenance.
 - [src/classifier/gnn_harness.py](src/classifier/gnn_harness.py) and
   [src/classifier/harness.py](src/classifier/harness.py): cached-base,
   deletion-only GNN scoring and an optional pooling parameter.

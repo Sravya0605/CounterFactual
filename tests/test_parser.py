@@ -108,12 +108,9 @@ class ParserGraphTest(unittest.TestCase):
         G.add_edge("n2", "n3", type="resource")
 
         edited = apply_candidate(G, {"delete_nodes": [], "substitute": {"n1": "CreateFile"}})
-        # The substituted node's resource must reflect CreateFile's real
-        # resource type (a file path placeholder), not a mangled version of
-        # WriteFile's original resource string -- a scheduled-task or
-        # registry-key substitution keeping the old resource text would be
-        # semantically invalid (e.g. a task "claiming" a registry key path).
-        self.assertEqual(edited.nodes["n1"]["resources"], ["C:\\Users\\Public\\[substituted]"])
+        # Same-type file API replacements retain identity so existing resource
+        # edges and consumers remain connected.
+        self.assertEqual(edited.nodes["n1"]["resources"], ["foo"])
 
         search = CounterfactualSearch(graph=G)
         self.assertEqual(search._downstream_cascade("n1"), ["n2", "n3"])
@@ -132,6 +129,41 @@ class ParserGraphTest(unittest.TestCase):
         self.assertEqual(len(resources), 1)
         self.assertNotIn("HKCU", resources[0])
         self.assertNotIn("createscheduledtask:", resources[0].lower())
+
+    def test_substitution_placeholder_is_a_root_only_at_replaced_node(self):
+        isolated = nx.DiGraph()
+        isolated.add_node(
+            "event",
+            api="RegSetValue",
+            resources=["HKCU\\Software\\Run\\evil"],
+        )
+        substitution = {
+            "delete_nodes": [],
+            "substitute": {"event": "CreateScheduledTask"},
+        }
+        self.assertTrue(validate_candidate(isolated, substitution))
+
+        connected = isolated.copy()
+        connected.add_node("consumer", api="RegQueryValue", resources=["HKCU\\Software\\Run\\evil"])
+        connected.add_edge("event", "consumer", type="resource")
+        self.assertFalse(validate_candidate(connected, substitution))
+
+    def test_same_resource_type_substitution_preserves_consumer_provenance(self):
+        G = nx.DiGraph()
+        G.add_node("writer", api="WriteFile", resources=["C:\\temp\\payload.bin"])
+        G.add_node("later", api="WriteFile", resources=["C:\\temp\\payload.bin"])
+        G.add_edge("writer", "later", type="resource")
+        candidate = {
+            "delete_nodes": [],
+            "substitute": {"writer": "NtWriteFile"},
+        }
+
+        edited = apply_candidate(G, candidate)
+        self.assertEqual(
+            edited.nodes["writer"]["resources"],
+            ["C:\\temp\\payload.bin"],
+        )
+        self.assertTrue(validate_candidate(G, candidate))
 
     def test_lgbm_harness_trains_and_persists_model(self):
         from src.classifier.harness import ClassifierHarness
