@@ -128,6 +128,46 @@ overwriting it. The exclusion is applied during candidate generation,
 including single-node pools, combinations, and trio extensions. Timed-out
 reports are recorded as `timed_out` in the results and checkpoint files.
 
+### Current investigation snapshot (October 11, 2026)
+
+The saved seed-7 baseline in `pipeline_results.json` used 600 reports per
+class, a 20% held-out split, and tested 300 malware reports. Held-out accuracy
+was **97.92%**. Of the 300 counterfactual reports, **25 flipped**, **268**
+had no flip found, and **7** were already below the malicious threshold.
+Therefore, the baseline rate is **25/293 = 8.5%** among reports initially
+classified as malicious (approximate 95% interval **5.8–12.3%**). This is a
+single-model, single-seed result, not a multi-seed estimate.
+
+Among the 25 selected flips, mean `new_prob` was **0.375** and mean
+`best_prob` was **0.317**; **17/25 (68%)** selected edits had `new_prob`
+below **0.45**. `new_prob` is the selected explanation's score; `best_prob`
+is the minimum score among the candidates evaluated.
+
+The prevalence analysis in `api_prevalence_oct10_final.json` found 44
+boilerplate candidates using the baseline's exact training split. The
+offline filtered-rescore analysis retained at least one flipping saved
+candidate for **7/25** baseline flips. This is not the same as rerunning
+candidate search with the exclusions enabled and must not be reported as the
+restricted pipeline's flip rate. Nearest-node controls on the same reports
+had **440 available**, **155 scored**, and **20 flips**; see
+`api_flip_dependence_oct10_final.jsonl` for per-report results and match
+distances.
+
+For matched restricted-versus-unrestricted seed comparisons, first train and
+save a model with the unrestricted run for that seed. Then run the restricted
+arm with `--reuse-model` before training another seed, so both arms use the
+same model. Change the seed and output paths for each pair. Do not use
+`--reuse-model` for the unrestricted training arm if it should initialize a
+new model. Report timed-out files separately as **not completed**.
+
+The feasibility-gate-off flip-rate comparison, equal-budget random-deletion
+baseline, three-seed summary, and WinMET/unileon external test evaluation
+have not been completed. The existing WinMET batch builder targets the
+training-report directory; do not merge external evaluation reports into
+training. Use separately staged test reports and labels for any external
+evaluation. Consult [SEARCH_INVESTIGATION_SUMMARY.md](SEARCH_INVESTIGATION_SUMMARY.md)
+for the detailed evidence and run status.
+
 ## Notes
 
 This is still a research prototype rather than a production-grade malware analysis platform. Synthetic benign reports are not substitutes for real benign CAPE captures: they are useful for validating plumbing and training experiments, but can introduce generator-specific shortcuts. Actual executable correspondence still requires replaying a controlled program in CAPE; the synthetic edited trace is a structural representation, not proof of execution.

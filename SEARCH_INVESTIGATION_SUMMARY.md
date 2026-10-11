@@ -1,16 +1,19 @@
 # Counterfactual Search Investigation — Current State
 
-**Evidence snapshot:** October 3, 2026  
-**Scope:** GNN-backed search, the saved `pipeline_gnn.pkl` model, and the
-25-report held-out run recorded in `pipeline_results.json`.
+**Evidence snapshot:** October 11, 2026  
+**Scope:** GNN-backed counterfactual search, historical focused experiments,
+the 300-report baseline in `pipeline_results.json`, and the boilerplate
+exclusion follow-up.
 
 ## Executive summary
 
-The current evidence is mixed, not an across-the-board success or failure.
-In the 25-report run, 24 reports were classified malicious and **2/24
-flipped**. The search substantially lowered probability for some reports,
-while others barely moved. A larger graph often had a smaller observed drop
-in this sample, but graph size alone does not explain the results.
+The evidence is mixed, not an across-the-board success or failure. An
+earlier focused 25-report run had **2/24 flips**; the later 300-report
+baseline recorded **25/293 flips (8.5%)**, with seven reports already below
+the malicious threshold. The search substantially lowered probability for
+some reports, while others barely moved. A larger graph often had a smaller
+observed drop in the earlier sample, but graph size alone does not explain
+the results.
 
 The investigation found several engineering bottlenecks and search-coverage
 gaps, then identified one particularly strong higher-order combination on
@@ -112,7 +115,7 @@ true minimum as `best_prob`. On task576, the selected trio's `new_prob` is
 **0.328843**, while the exhaustive minimum across **416** feasible
 candidates is **0.328532**.
 
-## Held-out result snapshot
+## Historical focused held-out result snapshot
 
 The 25 rows in `pipeline_results.json` comprise a deterministic 20-report
 sample and five additional reports; they are **25 unique reports, not 45**.
@@ -131,6 +134,89 @@ The two recorded flips were:
 The table reflects the saved result artifact from before exhaustive
 post-flip scoring was added. In particular, task576's reported best is the
 first crossing; its exhaustive minimum is **0.328532** as noted above.
+
+## October 10–11 extended baseline and boilerplate follow-up
+
+The later `pipeline_results.json` snapshot records a seed-7 GNN run with
+600 reports per class, a 20% held-out split, and 300 malware reports tested
+for counterfactuals at threshold **0.5**. Its held-out accuracy was
+**97.92%**. The 300 counterfactual outcomes were **25 completed flips**,
+**268 `no_flip_found`**, and **7 `not_malicious`**. Thus the eligible
+counterfactual denominator is 293 and the baseline flip rate is
+**25/293 = 8.53%** (approximately **5.8–12.3%** at 95% confidence). This is
+the requested single-model, single-seed headline; it is not a multi-seed
+estimate.
+
+For the 25 flips, the selected edit's `new_prob` averaged **0.375**, while
+the lowest scored candidate `best_prob` averaged **0.317**. **17/25 (68%)**
+selected edits had `new_prob < 0.45`. These are different quantities:
+`new_prob` is the probability for the selected explanation, whereas
+`best_prob` is the minimum among scored candidates.
+
+The training-set prevalence analysis used the exact 600 benign and 600
+malware training reports recorded by the baseline. Its rule was API presence
+in at least half of both classes and median first relative position below
+0.10. It found **44 boilerplate candidates**. In particular:
+
+| API | Benign reports | Malware reports | Median first relative position |
+|---|---:|---:|---:|
+| `NtTestAlert` | 600/600 (100.0%) | 599/600 (99.8%) | 0.001378 |
+| `GetSystemTimeAsFileTime` | 575/600 (95.8%) | 555/600 (92.5%) | 0.049457 |
+
+The authoritative prevalence output is
+`api_prevalence_oct10_final.json`. The saved-candidate follow-up excluded
+boilerplate-touching edits and substitutions whose destination API was
+outside the saved model vocabulary: **7/25 reports retained at least one
+candidate scoring below 0.5**. This is an offline rescore of saved
+candidates, not the restricted full-search flip rate.
+
+Nearest-node position controls selected up to 20 same-process, same-entity-
+type non-target nodes per target node, ranked by relative-position distance
+and then degree distance, without a hard tolerance. Across the 25 reports,
+**440** controls were available, **155** were scored, and **20** scored
+controls flipped. The recorded position-match delta ranged from **0.000041**
+to **0.714286**, with a median of **0.03125**. The per-report distances and
+scores are in `api_flip_dependence_oct10_final.jsonl`.
+
+### Active run and follow-up status
+
+At the time of this update, a seed-3 run was active with
+`--exclude-boilerplate`, `--reuse-model`, and
+`--boilerplate-apis-file api_prevalence_oct10_final.json`. Its requested
+per-file timeout is **1,000 seconds**. It writes to
+`pipeline_results_boilerplate_restricted_oct10.json` and
+`data/counterfactual_reports_restricted_seed3/`; its checkpoint had not yet
+been created when checked. The run reuses the available seed-3 model and is
+the restricted arm, not a fresh model-training run.
+
+An earlier seed-3 run used the output name
+`pipeline_results_boilerplate_excluded_oct11.json`, but its checkpoint
+metadata says `exclude_boilerplate: false`. That run is an unmasked
+different-seed control despite its misleading output filename; its partial
+checkpoint had six reports and was not a completed 300-report result.
+
+The requested three-seed comparison is not yet complete. For each seed,
+the unrestricted run must train and save that seed's model, and the
+boilerplate-restricted run must then reuse that same model. Report accuracy
+and flip rate as mean ± standard deviation across the three matched seeds;
+compute per-file flip agreement only on reports evaluated in all three
+seeds, and list timeouts separately as **not completed**. The single seed-7
+baseline above remains the headline until those runs finish.
+
+No feasibility-gate-off flip-rate comparison or equal-budget random-deletion
+baseline has been run. Although candidate generation internally records
+proposed/feasible/infeasible counts, the saved pipeline rows and checkpoints
+for this baseline do not contain per-file `constraint_comparison` counts.
+The pipeline currently has no CLI option for a feasibility-off run, and
+random deletion is not an available matched search mode; these comparisons
+require implementation and a new run before they can be reported.
+
+WinMET and unileon are not currently staged as separate local evaluation
+sets. The existing WinMET batch builder writes into the training-report
+directory, so using it directly would risk training/test mixing. External
+evaluation remains pending until reports and labels are available in
+separate test-only locations and can be evaluated without adding them to
+training.
 
 ## Timing variability
 
