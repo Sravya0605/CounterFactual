@@ -5,14 +5,14 @@ an edited behavior graph (useful for automated spot-check replays), and to
 emit a short manual checklist that guides a researcher through manual
 re-instantiation steps.
 """
-from typing import Any
+from typing import Any, Dict
 import json
 import networkx as nx
 from datetime import datetime, timezone
 
 
-def generate_synthetic_cape_report(G: nx.DiGraph, out_path: str) -> None:
-    """Write a minimal CAPE-like JSON where each node becomes a single call.
+def build_synthetic_cape_report(G: nx.DiGraph) -> Dict[str, Any]:
+    """Build a minimal CAPE-like report where each node becomes a single call.
 
     The output is intentionally simple: it allows replaying the parser->graph
     pipeline to confirm that the edited graph can be represented as a trace.
@@ -20,7 +20,7 @@ def generate_synthetic_cape_report(G: nx.DiGraph, out_path: str) -> None:
     processes = []
     calls_by_process = {}
     ts = 1
-    for n, d in sorted(G.nodes(data=True), key=lambda item: item[0]):
+    for _, d in sorted(G.nodes(data=True), key=lambda item: item[0]):
         if d.get("entity_type") == "resource":
             continue
         api = d.get("api", "unknown")
@@ -44,7 +44,7 @@ def generate_synthetic_cape_report(G: nx.DiGraph, out_path: str) -> None:
         except (TypeError, ValueError):
             pid = process_id
         processes.append({"pid": pid, "process_id": process_id, "calls": calls})
-    report = {
+    return {
         "behavior": {"processes": processes},
         "counterfactual_metadata": {
             "synthetic": True,
@@ -52,6 +52,11 @@ def generate_synthetic_cape_report(G: nx.DiGraph, out_path: str) -> None:
         },
         "generated_at": datetime.now(timezone.utc).isoformat(),
     }
+
+
+def generate_synthetic_cape_report(G: nx.DiGraph, out_path: str) -> None:
+    """Write a minimal CAPE-like JSON report for an edited behavior graph."""
+    report = build_synthetic_cape_report(G)
     with open(out_path, "w", encoding="utf-8") as f:
         json.dump(report, f, indent=2)
 

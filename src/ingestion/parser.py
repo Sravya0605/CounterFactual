@@ -205,19 +205,12 @@ def _classify_event(api: str, args: Any) -> Dict[str, Any]:
         "attack_id": attack_id,
     }
 
-def parse_cape_json(path: str) -> List[Dict[str, Any]]:
-    """Parse a CAPE JSON report and return normalized events.
+def parse_cape_report(report: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """Parse a decoded CAPE report and return normalized events.
 
     Each event carries process_id, timestamp, event_type, attack_id, resources,
     and a stable id.
     """
-    try:
-        report = _load_json_file(path)
-    except FileNotFoundError as exc:
-        raise FileNotFoundError(f"CAPE report not found: {path}") from exc
-    except (json.JSONDecodeError, ValueError) as exc:
-        raise ValueError(f"Malformed JSON in CAPE report: {path}") from exc
-
     events: List[Dict[str, Any]] = []
     processes: List[Dict[str, Any]] = []
     if isinstance(report.get("behavior"), dict) and isinstance(report["behavior"].get("processes"), list):
@@ -275,6 +268,17 @@ def parse_cape_json(path: str) -> List[Dict[str, Any]]:
             events.append(evt)
 
     return events
+
+
+def parse_cape_json(path: str) -> List[Dict[str, Any]]:
+    """Parse a CAPE JSON file and return normalized events."""
+    try:
+        report = _load_json_file(path)
+    except FileNotFoundError as exc:
+        raise FileNotFoundError(f"CAPE report not found: {path}") from exc
+    except (json.JSONDecodeError, ValueError) as exc:
+        raise ValueError(f"Malformed JSON in CAPE report: {path}") from exc
+    return parse_cape_report(report)
 
 
 if __name__ == "__main__":

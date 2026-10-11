@@ -289,6 +289,83 @@ search scored **449** and **456** feasible candidates respectively; neither
 the substitution proposals nor the new validator path displaced those
 results. All **62** directed library pairs have provenance entries.
 
+For task719, a bounded reproducible sample scored **3** of its **1,843**
+feasible substitutions (seed **719**). The current model snapshot scored the
+original graph at **0.992280006**; the sampled probabilities were
+**0.992277861**, **0.992270232**, and **0.992273033**. The best sampled
+substitution therefore improved probability by just **0.000009775**, with no
+threshold crossing. The old **0.988125563** task719 baseline came from a
+different saved model snapshot and is not a valid comparator here. This
+settles only the sampled candidates, not the full set.
+
+### task942 near-miss
+
+The saved fresh-run row for task942 was **26 nodes / 50 edges**, original
+probability **0.901170135**, best **0.532023013**, no flip, **2.31 s**. A
+current-model `find_flip()` rerun confirmed that the extension gate was
+enabled, selected **3** trios, but checked **0** extensions: the constructor's
+default edit budget for a 26-node graph is **3**, so no fourth deletion fits.
+With a one-off `max_edits=4`, the search checked **64** extensions (**45**
+feasible) and improved best probability to **0.518613815**, still above the
+0.5 threshold. This is not a flip and indicates the budget, not the extension
+gate, constrained this particular case.
+
+### Mixed deletion/substitution edits and a wider trio gate
+
+The search now composes up to **512** bounded hybrid candidates from
+high-priority two-node deletions and single substitutions. Each hybrid is
+validated by the existing feasibility checks; up to one sixth of the normal
+candidate budget is reserved so three-edit hybrids are not crowded out. The
+trio-extension margin is **0.35**, so extension can run when the best
+non-flipping candidate is as high as **0.85**.
+
+I compared both trio gates on six small reports with the same loaded
+`pipeline_gnn.pkl` snapshot (SHA-256
+`0D83A1D0CE51BE19369DA79997696FF45F73F6FC7765907802C26DD7470B214A`):
+
+| Report | Nodes | Best with 0.05 margin | Best with 0.35 margin | Extension checked |
+|---|---:|---:|---:|---:|
+| task65 | 50 | 0.756259 | 0.756259 | 129 (114 feasible) |
+| task680 | 22 | 0.771014 | 0.771014 | 0 |
+| task99 | 74 | 0.800866 | 0.792247 | 133 (100 feasible) |
+| task155 | 54 | 0.847962 | 0.829367 | 132 (117 feasible) |
+| task275 | 337 | 0.759003 | 0.739258 | 133 (40 feasible) |
+| task1045 | 76 | 0.830313 | 0.786695 | 134 (55 feasible) |
+
+The wider gate improved four of six best scores, but none crossed **0.5**.
+task680 illustrates the separate edit-budget constraint: its three-node
+budget permits no fourth deletion, so the wider gate found no extensions.
+task413's best score on this same model was **0.871531**, above the widened
+gate, and it correctly did not activate.
+
+With trio extension kept at the original **0.05** margin, enabling/disabling
+hybrid candidates on the same model yielded:
+
+| Report | Best without hybrids | Best with hybrids | Best hybrid candidate |
+|---|---:|---:|---|
+| task65 | 0.827998 | 0.756259 | delete `n0,n11`; substitute `n33: NtOpenKeyEx` |
+| task680 | 0.771014 | 0.771014 | no change |
+| task155 | 0.848861 | 0.847962 | not isolated |
+
+On task65, 21 feasible hybrids were scored; the best non-hybrid candidate
+scored **0.827998**. The mixed edit improved this to **0.756259**, still not a
+flip. This is a positive search-coverage result on one report, not evidence
+that hybrids generally improve outcomes. Neither experiment confirms
+executable behavior; it confirms only classifier scores for structurally
+feasible edits on this model snapshot.
+
+## Per-file timeout and checkpoint support
+
+`run_full_pipeline.py` now accepts `--per-file-timeout SECONDS`; when set, each
+report runs in a spawned worker process that is terminated at the deadline.
+With no timeout specified, the existing in-process execution path remains in
+place. Every completed, errored, or timed-out file is appended and flushed to
+`<--out>.checkpoint.jsonl`, so partial results survive interruption. Final
+JSON output is atomically replaced only after the loop finishes. `--resume`
+reuses saved non-error/non-timeout rows only when the stored run configuration
+and selected file list match; timeouts and errors are retried. Timeout rows are
+reported separately from other errors.
+
 These changes make substitution candidates available and feasibility-checked;
 they do not claim every listed pair is behaviorally identical for every
 trace. The library's equivalence rationale remains explicit in provenance,

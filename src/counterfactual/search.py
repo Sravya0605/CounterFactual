@@ -20,8 +20,11 @@ logger = logging.getLogger(__name__)
 
 
 class CounterfactualSearch:
-    def __init__(self, graph: nx.DiGraph):
+    def __init__(self, graph: nx.DiGraph, excluded_apis=None):
         self.graph = graph
+        self.excluded_apis = {
+            str(api).casefold() for api in (excluded_apis or ())
+        }
         self.max_edits = max(3, min(150, int(max(3, self.graph.number_of_nodes() * 0.1 + 0.999))))
         self.max_candidates = 3000
         # Separate insertion candidate budget so deletions/substitutions
@@ -33,9 +36,10 @@ class CounterfactualSearch:
         self.pair_node_limit = 32
         self.max_pair_candidates = 512
         self.max_triple_candidates = 512
-        self.trio_extension_margin = 0.05
+        self.trio_extension_margin = 0.35
         self.trio_extension_limit = 3
         self.trio_extension_node_limit = 48
+        self.max_hybrid_candidates = 512
 
         # Beyond-pair combination search.
         #
@@ -104,8 +108,33 @@ class CounterfactualSearch:
             node for node, data in self.graph.nodes(data=True)
             if data.get("entity_type") != "resource"
             and str(data.get("api") or "").lower() != "process"
+            and str(data.get("api") or "").casefold() not in self.excluded_apis
         ]
         return sorted(nodes, key=self._node_priority, reverse=True)
+
+    def _candidate_touches_excluded_api(self, candidate: Dict) -> bool:
+        if not self.excluded_apis:
+            return False
+        edited_nodes = set(candidate.get("delete_nodes", []) or [])
+        substitutions = candidate.get("substitute", {}) or {}
+        edited_nodes.update(substitutions)
+        for edge in candidate.get("delete_edges", []) or []:
+            if isinstance(edge, (list, tuple)) and len(edge) == 2:
+                edited_nodes.update(edge)
+        for node in edited_nodes:
+            if node in self.graph and str(
+                self.graph.nodes[node].get("api") or ""
+            ).casefold() in self.excluded_apis:
+                return True
+        if any(
+            str(api or "").casefold() in self.excluded_apis
+            for api in substitutions.values()
+        ):
+            return True
+        return any(
+            str(insertion.get("api") or "").casefold() in self.excluded_apis
+            for insertion in candidate.get("insert_nodes", []) or []
+        )
 
     def _apply_candidate(self, candidate: Dict) -> nx.DiGraph:
         return feasibility.apply_candidate(self.graph, candidate)
@@ -182,7 +211,11 @@ class CounterfactualSearch:
         seen = set()
 
         def add(candidate: Optional[Dict]) -> None:
-            if candidate is None or not self._within_edit_budget(candidate):
+            if (
+                candidate is None
+                or not self._within_edit_budget(candidate)
+                or self._candidate_touches_excluded_api(candidate)
+            ):
                 return
             key = self._candidate_key(candidate)
             if key not in seen:
@@ -277,6 +310,54 @@ class CounterfactualSearch:
                 if pair_count >= self.max_pair_candidates:
                     break
             if pair_count >= self.max_pair_candidates:
+                break
+
+        deletion_pairs = sorted(
+            (
+                candidate for candidate in cands
+                if len(candidate.get("delete_nodes", []) or []) == 2
+                and not (candidate.get("delete_edges", []) or [])
+                and not (candidate.get("substitute", {}) or {})
+                and not (candidate.get("insert_nodes", []) or [])
+            ),
+            key=lambda candidate: (
+                -self._candidate_priority(candidate),
+                self._candidate_key(candidate),
+            ),
+        )[:48]
+        single_substitutions = sorted(
+            (
+                candidate for candidate in cands
+                if not (candidate.get("delete_nodes", []) or [])
+                and not (candidate.get("delete_edges", []) or [])
+                and len(candidate.get("substitute", {}) or {}) == 1
+                and not (candidate.get("insert_nodes", []) or [])
+            ),
+            key=lambda candidate: (
+                -self._candidate_priority(candidate),
+                self._candidate_key(candidate),
+            ),
+        )[:48]
+        hybrid_count = 0
+        for deletion_pair in deletion_pairs:
+            if hybrid_count >= self.max_hybrid_candidates:
+                break
+            deleted_nodes = set(deletion_pair["delete_nodes"])
+            for substitution in single_substitutions:
+                node, api = next(iter(substitution["substitute"].items()))
+                if node in deleted_nodes:
+                    continue
+                hybrid = {
+                    "delete_nodes": sorted(deleted_nodes, key=str),
+                    "substitute": {node: api},
+                }
+                if not self._within_edit_budget(hybrid):
+                    continue
+                add(hybrid)
+                hybrid_count += 1
+                if hybrid_count >= self.max_hybrid_candidates:
+                    break
+            if hybrid_count >= self.max_hybrid_candidates:
                 break
 
         # Beyond pairs: search bounded combinations of independently
@@ -386,14 +467,41 @@ class CounterfactualSearch:
         except Exception as exc:
             logger.warning("Insertion proposer failed: %s", exc)
 
-        return sorted(
+        ranked_candidates = sorted(
             cands,
             key=lambda candidate: (
                 self._candidate_cost(candidate),
                 -self._candidate_priority(candidate),
                 self._candidate_key(candidate),
             ),
-        )[: self.max_candidates]
+        )
+        hybrid_keys = {
+            self._candidate_key(candidate)
+            for candidate in ranked_candidates
+            if len(candidate.get("delete_nodes", []) or []) == 2
+            and len(candidate.get("substitute", {}) or {}) == 1
+        }
+        hybrids = [
+            candidate for candidate in ranked_candidates
+            if self._candidate_key(candidate) in hybrid_keys
+        ]
+        other_candidates = [
+            candidate for candidate in ranked_candidates
+            if self._candidate_key(candidate) not in hybrid_keys
+        ]
+        hybrid_quota = min(len(hybrids), self.max_candidates // 6)
+        selected = (
+            other_candidates[: self.max_candidates - hybrid_quota]
+            + hybrids[:hybrid_quota]
+        )
+        return sorted(
+            selected,
+            key=lambda candidate: (
+                self._candidate_cost(candidate),
+                -self._candidate_priority(candidate),
+                self._candidate_key(candidate),
+            ),
+        )
 
     def validate(self, candidate: Dict) -> bool:
         if not self.enforce_feasibility:
@@ -550,7 +658,10 @@ class CounterfactualSearch:
                         "delete_nodes": sorted(trio_nodes | {node}, key=str),
                         "substitute": {},
                     }
-                    if not self._within_edit_budget(extended):
+                    if (
+                        not self._within_edit_budget(extended)
+                        or self._candidate_touches_excluded_api(extended)
+                    ):
                         continue
                     key = self._candidate_key(extended)
                     if key in existing_keys:

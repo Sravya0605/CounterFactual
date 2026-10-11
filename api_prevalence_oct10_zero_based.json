@@ -1,0 +1,2915 @@
+{
+  "results_file": "C:\\projects\\counterfactual\\pipeline_results.json",
+  "position_definition": "zero-based event sequence / number of parsed events in that event's process; first API occurrence per report",
+  "report_counts": {
+    "benign": 600,
+    "malware": 600
+  },
+  "boilerplate_rule": "present in at least 50% of both classes and median first relative position < 0.10",
+  "boilerplate_candidates": [
+    "deviceiocontrol",
+    "dllloadnotification",
+    "findfirstfileexw",
+    "getsystemtimeasfiletime",
+    "ldrgetdllhandle",
+    "ldrgetprocedureaddressforcaller",
+    "ldrloaddll",
+    "ldrpcallinitroutine",
+    "loadlibraryexw",
+    "ntallocatevirtualmemory",
+    "ntclose",
+    "ntcreatefile",
+    "ntcreatesection",
+    "ntdeviceiocontrolfile",
+    "ntduplicateobject",
+    "ntmapviewofsection",
+    "ntopenfile",
+    "ntopenkey",
+    "ntopenkeyex",
+    "ntopenprocesstoken",
+    "ntopensection",
+    "ntprotectvirtualmemory",
+    "ntqueryattributesfile",
+    "ntqueryinformationfile",
+    "ntqueryinformationtoken",
+    "ntquerysysteminformation",
+    "ntqueryvaluekey",
+    "ntreadfile",
+    "ntsetinformationfile",
+    "nttestalert",
+    "ntunmapviewofsection",
+    "ntwaitforsingleobject",
+    "regclosekey",
+    "regopenkeyexw",
+    "regqueryvalueexw",
+    "rtlsetcurrenttransaction",
+    "rtluserthreadstart",
+    "setunhandledexceptionfilter"
+  ],
+  "apis": [
+    {
+      "api": "internetcrackurlw",
+      "benign_reports": 2,
+      "benign_share": 0.0033333333333333335,
+      "malware_reports": 26,
+      "malware_share": 0.043333333333333335,
+      "median_first_relative_position": 0.48688096676994763
+    },
+    {
+      "api": "ntquerysystemtime",
+      "benign_reports": 370,
+      "benign_share": 0.6166666666666667,
+      "malware_reports": 382,
+      "malware_share": 0.6366666666666667,
+      "median_first_relative_position": 0.20636574127245916
+    },
+    {
+      "api": "ntqueryinstalluilanguage",
+      "benign_reports": 14,
+      "benign_share": 0.023333333333333334,
+      "malware_reports": 23,
+      "malware_share": 0.03833333333333333,
+      "median_first_relative_position": 0.7188498402555911
+    },
+    {
+      "api": "ntwritevirtualmemory",
+      "benign_reports": 22,
+      "benign_share": 0.03666666666666667,
+      "malware_reports": 41,
+      "malware_share": 0.06833333333333333,
+      "median_first_relative_position": 0.6022687695905269
+    },
+    {
+      "api": "process32nextw",
+      "benign_reports": 245,
+      "benign_share": 0.4083333333333333,
+      "malware_reports": 102,
+      "malware_share": 0.17,
+      "median_first_relative_position": 0.728372485581657
+    },
+    {
+      "api": "internetopenurla",
+      "benign_reports": 1,
+      "benign_share": 0.0016666666666666668,
+      "malware_reports": 13,
+      "malware_share": 0.021666666666666667,
+      "median_first_relative_position": 0.33769875694221707
+    },
+    {
+      "api": "ntreleasemutant",
+      "benign_reports": 389,
+      "benign_share": 0.6483333333333333,
+      "malware_reports": 326,
+      "malware_share": 0.5433333333333333,
+      "median_first_relative_position": 0.22902338376891335
+    },
+    {
+      "api": "httpsendrequestexw",
+      "benign_reports": 1,
+      "benign_share": 0.0016666666666666668,
+      "malware_reports": 0,
+      "malware_share": 0.0,
+      "median_first_relative_position": 0.5035014005602241
+    },
+    {
+      "api": "winhttpgetieproxyconfigforcurrentuser",
+      "benign_reports": 19,
+      "benign_share": 0.03166666666666667,
+      "malware_reports": 51,
+      "malware_share": 0.085,
+      "median_first_relative_position": 0.43640980658498185
+    },
+    {
+      "api": "shgetfileinfow",
+      "benign_reports": 334,
+      "benign_share": 0.5566666666666666,
+      "malware_reports": 42,
+      "malware_share": 0.07,
+      "median_first_relative_position": 0.03147438682008846
+    },
+    {
+      "api": "sysenter",
+      "benign_reports": 361,
+      "benign_share": 0.6016666666666667,
+      "malware_reports": 254,
+      "malware_share": 0.42333333333333334,
+      "median_first_relative_position": 0.002849002849002849
+    },
+    {
+      "api": "getuserdefaultlcid",
+      "benign_reports": 306,
+      "benign_share": 0.51,
+      "malware_reports": 189,
+      "malware_share": 0.315,
+      "median_first_relative_position": 0.22592592592592592
+    },
+    {
+      "api": "ssldecryptpacket",
+      "benign_reports": 0,
+      "benign_share": 0.0,
+      "malware_reports": 48,
+      "malware_share": 0.08,
+      "median_first_relative_position": 0.11837879801136947
+    },
+    {
+      "api": "cryptdestroykey",
+      "benign_reports": 50,
+      "benign_share": 0.08333333333333333,
+      "malware_reports": 94,
+      "malware_share": 0.15666666666666668,
+      "median_first_relative_position": 0.4691286577011907
+    },
+    {
+      "api": "__anomaly__",
+      "benign_reports": 12,
+      "benign_share": 0.02,
+      "malware_reports": 42,
+      "malware_share": 0.07,
+      "median_first_relative_position": 0.5658298470955205
+    },
+    {
+      "api": "vbslen",
+      "benign_reports": 2,
+      "benign_share": 0.0033333333333333335,
+      "malware_reports": 1,
+      "malware_share": 0.0016666666666666668,
+      "median_first_relative_position": 0.7790697674418605
+    },
+    {
+      "api": "ldrgetdllhandleex",
+      "benign_reports": 2,
+      "benign_share": 0.0033333333333333335,
+      "malware_reports": 9,
+      "malware_share": 0.015,
+      "median_first_relative_position": 0.02900121967746307
+    },
+    {
+      "api": "getfileversioninfosizew",
+      "benign_reports": 239,
+      "benign_share": 0.3983333333333333,
+      "malware_reports": 198,
+      "malware_share": 0.33,
+      "median_first_relative_position": 0.10733844468784227
+    },
+    {
+      "api": "ntreadvirtualmemory",
+      "benign_reports": 51,
+      "benign_share": 0.085,
+      "malware_reports": 114,
+      "malware_share": 0.19,
+      "median_first_relative_position": 0.3055272973889454
+    },
+    {
+      "api": "cryptcreatehash",
+      "benign_reports": 55,
+      "benign_share": 0.09166666666666666,
+      "malware_reports": 225,
+      "malware_share": 0.375,
+      "median_first_relative_position": 0.37452529997666867
+    },
+    {
+      "api": "ntdeviceiocontrolfile",
+      "benign_reports": 516,
+      "benign_share": 0.86,
+      "malware_reports": 433,
+      "malware_share": 0.7216666666666667,
+      "median_first_relative_position": 0.03322630182884266
+    },
+    {
+      "api": "gethostbyname",
+      "benign_reports": 2,
+      "benign_share": 0.0033333333333333335,
+      "malware_reports": 14,
+      "malware_share": 0.023333333333333334,
+      "median_first_relative_position": 0.4377600665770437
+    },
+    {
+      "api": "ntwaitforsingleobject",
+      "benign_reports": 597,
+      "benign_share": 0.995,
+      "malware_reports": 587,
+      "malware_share": 0.9783333333333334,
+      "median_first_relative_position": 0.021696081321377292
+    },
+    {
+      "api": "ntopendirectoryobject",
+      "benign_reports": 285,
+      "benign_share": 0.475,
+      "malware_reports": 292,
+      "malware_share": 0.4866666666666667,
+      "median_first_relative_position": 0.22774303581580443
+    },
+    {
+      "api": "postthreadmessagew",
+      "benign_reports": 17,
+      "benign_share": 0.028333333333333332,
+      "malware_reports": 59,
+      "malware_share": 0.09833333333333333,
+      "median_first_relative_position": 0.8138974295904562
+    },
+    {
+      "api": "httpsendrequestw",
+      "benign_reports": 1,
+      "benign_share": 0.0016666666666666668,
+      "malware_reports": 0,
+      "malware_share": 0.0,
+      "median_first_relative_position": 0.932258064516129
+    },
+    {
+      "api": "ntsetinformationprocess",
+      "benign_reports": 507,
+      "benign_share": 0.845,
+      "malware_reports": 491,
+      "malware_share": 0.8183333333333334,
+      "median_first_relative_position": 0.2194881985095269
+    },
+    {
+      "api": "ntquerylicensevalue",
+      "benign_reports": 374,
+      "benign_share": 0.6233333333333333,
+      "malware_reports": 213,
+      "malware_share": 0.355,
+      "median_first_relative_position": 0.022137404580152672
+    },
+    {
+      "api": "httpsfinalprov",
+      "benign_reports": 0,
+      "benign_share": 0.0,
+      "malware_reports": 11,
+      "malware_share": 0.018333333333333333,
+      "median_first_relative_position": 0.24081853909743867
+    },
+    {
+      "api": "heapcreate",
+      "benign_reports": 321,
+      "benign_share": 0.535,
+      "malware_reports": 271,
+      "malware_share": 0.45166666666666666,
+      "median_first_relative_position": 0.016540947878615812
+    },
+    {
+      "api": "getlastinputinfo",
+      "benign_reports": 12,
+      "benign_share": 0.02,
+      "malware_reports": 31,
+      "malware_share": 0.051666666666666666,
+      "median_first_relative_position": 0.05721765145848916
+    },
+    {
+      "api": "wsasocketw",
+      "benign_reports": 16,
+      "benign_share": 0.02666666666666667,
+      "malware_reports": 240,
+      "malware_share": 0.4,
+      "median_first_relative_position": 0.2278229421845881
+    },
+    {
+      "api": "setthreadstackguarantee",
+      "benign_reports": 149,
+      "benign_share": 0.24833333333333332,
+      "malware_reports": 181,
+      "malware_share": 0.3016666666666667,
+      "median_first_relative_position": 0.06706719063581343
+    },
+    {
+      "api": "nspstartup",
+      "benign_reports": 1,
+      "benign_share": 0.0016666666666666668,
+      "malware_reports": 4,
+      "malware_share": 0.006666666666666667,
+      "median_first_relative_position": 0.16423942051086543
+    },
+    {
+      "api": "postmessagea",
+      "benign_reports": 11,
+      "benign_share": 0.018333333333333333,
+      "malware_reports": 5,
+      "malware_share": 0.008333333333333333,
+      "median_first_relative_position": 0.42016009893808987
+    },
+    {
+      "api": "findfirstchangenotificationw",
+      "benign_reports": 8,
+      "benign_share": 0.013333333333333334,
+      "malware_reports": 5,
+      "malware_share": 0.008333333333333333,
+      "median_first_relative_position": 0.5137115626685848
+    },
+    {
+      "api": "controlservice",
+      "benign_reports": 0,
+      "benign_share": 0.0,
+      "malware_reports": 31,
+      "malware_share": 0.051666666666666666,
+      "median_first_relative_position": 0.6904400606980273
+    },
+    {
+      "api": "wsasendmsg",
+      "benign_reports": 0,
+      "benign_share": 0.0,
+      "malware_reports": 1,
+      "malware_share": 0.0016666666666666668,
+      "median_first_relative_position": 0.21653021442495127
+    },
+    {
+      "api": "getvolumenameforvolumemountpointw",
+      "benign_reports": 343,
+      "benign_share": 0.5716666666666667,
+      "malware_reports": 135,
+      "malware_share": 0.225,
+      "median_first_relative_position": 0.01910487655984667
+    },
+    {
+      "api": "getwritewatch",
+      "benign_reports": 8,
+      "benign_share": 0.013333333333333334,
+      "malware_reports": 66,
+      "malware_share": 0.11,
+      "median_first_relative_position": 0.7945211654258362
+    },
+    {
+      "api": "findfixandrun",
+      "benign_reports": 2,
+      "benign_share": 0.0033333333333333335,
+      "malware_reports": 45,
+      "malware_share": 0.075,
+      "median_first_relative_position": 0.5688073394495413
+    },
+    {
+      "api": "saferidentifylevel",
+      "benign_reports": 5,
+      "benign_share": 0.008333333333333333,
+      "malware_reports": 49,
+      "malware_share": 0.08166666666666667,
+      "median_first_relative_position": 0.24446185537137527
+    },
+    {
+      "api": "ldrgetdllhandle",
+      "benign_reports": 600,
+      "benign_share": 1.0,
+      "malware_reports": 534,
+      "malware_share": 0.89,
+      "median_first_relative_position": 0.012345717414024784
+    },
+    {
+      "api": "vbsreplace",
+      "benign_reports": 2,
+      "benign_share": 0.0033333333333333335,
+      "malware_reports": 1,
+      "malware_share": 0.0016666666666666668,
+      "median_first_relative_position": 0.7779623477297896
+    },
+    {
+      "api": "urldownloadtofilew",
+      "benign_reports": 0,
+      "benign_share": 0.0,
+      "malware_reports": 1,
+      "malware_share": 0.0016666666666666668,
+      "median_first_relative_position": 0.689073305670816
+    },
+    {
+      "api": "ntsetinformationfile",
+      "benign_reports": 360,
+      "benign_share": 0.6,
+      "malware_reports": 415,
+      "malware_share": 0.6916666666666667,
+      "median_first_relative_position": 0.08278525312254872
+    },
+    {
+      "api": "bcryptdecrypt",
+      "benign_reports": 1,
+      "benign_share": 0.0016666666666666668,
+      "malware_reports": 11,
+      "malware_share": 0.018333333333333333,
+      "median_first_relative_position": 0.528435755352217
+    },
+    {
+      "api": "getsysteminfo",
+      "benign_reports": 395,
+      "benign_share": 0.6583333333333333,
+      "malware_reports": 433,
+      "malware_share": 0.7216666666666667,
+      "median_first_relative_position": 0.10323753607260153
+    },
+    {
+      "api": "lsaopenpolicy",
+      "benign_reports": 184,
+      "benign_share": 0.30666666666666664,
+      "malware_reports": 114,
+      "malware_share": 0.19,
+      "median_first_relative_position": 0.19203373642206142
+    },
+    {
+      "api": "mkparsedisplayname",
+      "benign_reports": 0,
+      "benign_share": 0.0,
+      "malware_reports": 1,
+      "malware_share": 0.0016666666666666668,
+      "median_first_relative_position": 0.399540757749713
+    },
+    {
+      "api": "ntopenthread",
+      "benign_reports": 37,
+      "benign_share": 0.06166666666666667,
+      "malware_reports": 248,
+      "malware_share": 0.41333333333333333,
+      "median_first_relative_position": 0.09575208913649025
+    },
+    {
+      "api": "getaddrinfow",
+      "benign_reports": 3,
+      "benign_share": 0.005,
+      "malware_reports": 67,
+      "malware_share": 0.11166666666666666,
+      "median_first_relative_position": 0.5299303119534051
+    },
+    {
+      "api": "findresourceexw",
+      "benign_reports": 121,
+      "benign_share": 0.20166666666666666,
+      "malware_reports": 131,
+      "malware_share": 0.21833333333333332,
+      "median_first_relative_position": 0.12870476991602697
+    },
+    {
+      "api": "httpaddrequestheadersa",
+      "benign_reports": 1,
+      "benign_share": 0.0016666666666666668,
+      "malware_reports": 0,
+      "malware_share": 0.0,
+      "median_first_relative_position": 0.9319400049176297
+    },
+    {
+      "api": "regopenkeyexw",
+      "benign_reports": 525,
+      "benign_share": 0.875,
+      "malware_reports": 428,
+      "malware_share": 0.7133333333333334,
+      "median_first_relative_position": 0.050037907505686124
+    },
+    {
+      "api": "createremotethread",
+      "benign_reports": 0,
+      "benign_share": 0.0,
+      "malware_reports": 2,
+      "malware_share": 0.0033333333333333335,
+      "median_first_relative_position": 0.7919918691268992
+    },
+    {
+      "api": "send",
+      "benign_reports": 5,
+      "benign_share": 0.008333333333333333,
+      "malware_reports": 87,
+      "malware_share": 0.145,
+      "median_first_relative_position": 0.5668936769612749
+    },
+    {
+      "api": "ntquerysysteminformation",
+      "benign_reports": 494,
+      "benign_share": 0.8233333333333334,
+      "malware_reports": 434,
+      "malware_share": 0.7233333333333334,
+      "median_first_relative_position": 0.0444191293579664
+    },
+    {
+      "api": "loadlibraryexw",
+      "benign_reports": 591,
+      "benign_share": 0.985,
+      "malware_reports": 503,
+      "malware_share": 0.8383333333333334,
+      "median_first_relative_position": 0.032128546443350156
+    },
+    {
+      "api": "movefilewithprogressw",
+      "benign_reports": 9,
+      "benign_share": 0.015,
+      "malware_reports": 8,
+      "malware_share": 0.013333333333333334,
+      "median_first_relative_position": 0.3526344182700953
+    },
+    {
+      "api": "ntunmapviewofsectionex",
+      "benign_reports": 421,
+      "benign_share": 0.7016666666666667,
+      "malware_reports": 352,
+      "malware_share": 0.5866666666666667,
+      "median_first_relative_position": 0.5960816326530612
+    },
+    {
+      "api": "ntfreevirtualmemory",
+      "benign_reports": 556,
+      "benign_share": 0.9266666666666666,
+      "malware_reports": 483,
+      "malware_share": 0.805,
+      "median_first_relative_position": 0.11686053251922557
+    },
+    {
+      "api": "cryptimportkey",
+      "benign_reports": 55,
+      "benign_share": 0.09166666666666666,
+      "malware_reports": 197,
+      "malware_share": 0.3283333333333333,
+      "median_first_relative_position": 0.3917979886625002
+    },
+    {
+      "api": "rtlwow64setthreadcontext",
+      "benign_reports": 0,
+      "benign_share": 0.0,
+      "malware_reports": 2,
+      "malware_share": 0.0033333333333333335,
+      "median_first_relative_position": 0.9750551063422797
+    },
+    {
+      "api": "cogetobject",
+      "benign_reports": 21,
+      "benign_share": 0.035,
+      "malware_reports": 26,
+      "malware_share": 0.043333333333333335,
+      "median_first_relative_position": 0.13114754098360656
+    },
+    {
+      "api": "deletefilew",
+      "benign_reports": 344,
+      "benign_share": 0.5733333333333334,
+      "malware_reports": 158,
+      "malware_share": 0.2633333333333333,
+      "median_first_relative_position": 0.03795375957692047
+    },
+    {
+      "api": "wsasend",
+      "benign_reports": 0,
+      "benign_share": 0.0,
+      "malware_reports": 185,
+      "malware_share": 0.30833333333333335,
+      "median_first_relative_position": 0.2040960451977401
+    },
+    {
+      "api": "movefilewithprogresstransactedw",
+      "benign_reports": 112,
+      "benign_share": 0.18666666666666668,
+      "malware_reports": 88,
+      "malware_share": 0.14666666666666667,
+      "median_first_relative_position": 0.8788608069284257
+    },
+    {
+      "api": "ntraiseharderror",
+      "benign_reports": 0,
+      "benign_share": 0.0,
+      "malware_reports": 3,
+      "malware_share": 0.005,
+      "median_first_relative_position": 0.20634920634920634
+    },
+    {
+      "api": "ntcreatethreadex",
+      "benign_reports": 397,
+      "benign_share": 0.6616666666666666,
+      "malware_reports": 464,
+      "malware_share": 0.7733333333333333,
+      "median_first_relative_position": 0.21259418729817006
+    },
+    {
+      "api": "ntopenkey",
+      "benign_reports": 600,
+      "benign_share": 1.0,
+      "malware_reports": 562,
+      "malware_share": 0.9366666666666666,
+      "median_first_relative_position": 0.020182313711691702
+    },
+    {
+      "api": "setwindowshookexw",
+      "benign_reports": 58,
+      "benign_share": 0.09666666666666666,
+      "malware_reports": 23,
+      "malware_share": 0.03833333333333333,
+      "median_first_relative_position": 0.18665474460713088
+    },
+    {
+      "api": "regcreatekeyexw",
+      "benign_reports": 73,
+      "benign_share": 0.12166666666666667,
+      "malware_reports": 276,
+      "malware_share": 0.46,
+      "median_first_relative_position": 0.2515575693826361
+    },
+    {
+      "api": "getdiskfreespaceexa",
+      "benign_reports": 1,
+      "benign_share": 0.0016666666666666668,
+      "malware_reports": 35,
+      "malware_share": 0.058333333333333334,
+      "median_first_relative_position": 0.010925428322620383
+    },
+    {
+      "api": "ntprotectvirtualmemory",
+      "benign_reports": 579,
+      "benign_share": 0.965,
+      "malware_reports": 566,
+      "malware_share": 0.9433333333333334,
+      "median_first_relative_position": 0.010093167701863354
+    },
+    {
+      "api": "enumdisplaydevicesa",
+      "benign_reports": 35,
+      "benign_share": 0.058333333333333334,
+      "malware_reports": 5,
+      "malware_share": 0.008333333333333333,
+      "median_first_relative_position": 0.46931083339126656
+    },
+    {
+      "api": "createprocessa",
+      "benign_reports": 3,
+      "benign_share": 0.005,
+      "malware_reports": 24,
+      "malware_share": 0.04,
+      "median_first_relative_position": 0.9612961296129613
+    },
+    {
+      "api": "urlcanonicalizew",
+      "benign_reports": 32,
+      "benign_share": 0.05333333333333334,
+      "malware_reports": 76,
+      "malware_share": 0.12666666666666668,
+      "median_first_relative_position": 0.13006795979733504
+    },
+    {
+      "api": "getadaptersaddresses",
+      "benign_reports": 22,
+      "benign_share": 0.03666666666666667,
+      "malware_reports": 78,
+      "malware_share": 0.13,
+      "median_first_relative_position": 0.42099148168111067
+    },
+    {
+      "api": "socket",
+      "benign_reports": 27,
+      "benign_share": 0.045,
+      "malware_reports": 223,
+      "malware_share": 0.37166666666666665,
+      "median_first_relative_position": 0.12744914498694399
+    },
+    {
+      "api": "wbemlocator_connectserver",
+      "benign_reports": 33,
+      "benign_share": 0.055,
+      "malware_reports": 117,
+      "malware_share": 0.195,
+      "median_first_relative_position": 0.531444789842684
+    },
+    {
+      "api": "getfileversioninfow",
+      "benign_reports": 230,
+      "benign_share": 0.38333333333333336,
+      "malware_reports": 176,
+      "malware_share": 0.29333333333333333,
+      "median_first_relative_position": 0.09883870395815789
+    },
+    {
+      "api": "winhttpopen",
+      "benign_reports": 24,
+      "benign_share": 0.04,
+      "malware_reports": 200,
+      "malware_share": 0.3333333333333333,
+      "median_first_relative_position": 0.17516458581511102
+    },
+    {
+      "api": "createtoolhelp32snapshot",
+      "benign_reports": 246,
+      "benign_share": 0.41,
+      "malware_reports": 106,
+      "malware_share": 0.17666666666666667,
+      "median_first_relative_position": 0.7246890424852442
+    },
+    {
+      "api": "setthreaddescription",
+      "benign_reports": 35,
+      "benign_share": 0.058333333333333334,
+      "malware_reports": 48,
+      "malware_share": 0.08,
+      "median_first_relative_position": 0.13227121155983698
+    },
+    {
+      "api": "shellexecuteexw",
+      "benign_reports": 3,
+      "benign_share": 0.005,
+      "malware_reports": 62,
+      "malware_share": 0.10333333333333333,
+      "median_first_relative_position": 0.9616932238854016
+    },
+    {
+      "api": "shgetfolderpathw",
+      "benign_reports": 296,
+      "benign_share": 0.49333333333333335,
+      "malware_reports": 201,
+      "malware_share": 0.335,
+      "median_first_relative_position": 0.6089318844420886
+    },
+    {
+      "api": "getaddrinfo",
+      "benign_reports": 12,
+      "benign_share": 0.02,
+      "malware_reports": 51,
+      "malware_share": 0.085,
+      "median_first_relative_position": 0.6655629139072847
+    },
+    {
+      "api": "setupdigetclassdevsa",
+      "benign_reports": 11,
+      "benign_share": 0.018333333333333333,
+      "malware_reports": 2,
+      "malware_share": 0.0033333333333333335,
+      "median_first_relative_position": 0.34441805225653205
+    },
+    {
+      "api": "recv",
+      "benign_reports": 4,
+      "benign_share": 0.006666666666666667,
+      "malware_reports": 80,
+      "malware_share": 0.13333333333333333,
+      "median_first_relative_position": 0.7638538454350061
+    },
+    {
+      "api": "bcryptimportkeypair",
+      "benign_reports": 7,
+      "benign_share": 0.011666666666666667,
+      "malware_reports": 5,
+      "malware_share": 0.008333333333333333,
+      "median_first_relative_position": 0.4605237058607334
+    },
+    {
+      "api": "getphysicallyinstalledsystemmemory",
+      "benign_reports": 2,
+      "benign_share": 0.0033333333333333335,
+      "malware_reports": 24,
+      "malware_share": 0.04,
+      "median_first_relative_position": 0.8254430754430755
+    },
+    {
+      "api": "winhttpqueryheaders",
+      "benign_reports": 1,
+      "benign_share": 0.0016666666666666668,
+      "malware_reports": 129,
+      "malware_share": 0.215,
+      "median_first_relative_position": 0.3098520311172498
+    },
+    {
+      "api": "ntdeletevaluekey",
+      "benign_reports": 5,
+      "benign_share": 0.008333333333333333,
+      "malware_reports": 43,
+      "malware_share": 0.07166666666666667,
+      "median_first_relative_position": 0.4928734546027246
+    },
+    {
+      "api": "listen",
+      "benign_reports": 10,
+      "benign_share": 0.016666666666666666,
+      "malware_reports": 5,
+      "malware_share": 0.008333333333333333,
+      "median_first_relative_position": 0.5575381326316655
+    },
+    {
+      "api": "ntloaddriver",
+      "benign_reports": 2,
+      "benign_share": 0.0033333333333333335,
+      "malware_reports": 1,
+      "malware_share": 0.0016666666666666668,
+      "median_first_relative_position": 0.80622009569378
+    },
+    {
+      "api": "getcommandlinew",
+      "benign_reports": 243,
+      "benign_share": 0.405,
+      "malware_reports": 250,
+      "malware_share": 0.4166666666666667,
+      "median_first_relative_position": 0.04672131147540984
+    },
+    {
+      "api": "ntgetcontextthread",
+      "benign_reports": 12,
+      "benign_share": 0.02,
+      "malware_reports": 144,
+      "malware_share": 0.24,
+      "median_first_relative_position": 0.21911236205460266
+    },
+    {
+      "api": "writeconsolew",
+      "benign_reports": 6,
+      "benign_share": 0.01,
+      "malware_reports": 48,
+      "malware_share": 0.08,
+      "median_first_relative_position": 0.45194970004614676
+    },
+    {
+      "api": "openscmanagera",
+      "benign_reports": 13,
+      "benign_share": 0.021666666666666667,
+      "malware_reports": 46,
+      "malware_share": 0.07666666666666666,
+      "median_first_relative_position": 0.4330432817267488
+    },
+    {
+      "api": "ntdeleteatom",
+      "benign_reports": 19,
+      "benign_share": 0.03166666666666667,
+      "malware_reports": 29,
+      "malware_share": 0.04833333333333333,
+      "median_first_relative_position": 0.6706182718769464
+    },
+    {
+      "api": "ntterminateprocess",
+      "benign_reports": 317,
+      "benign_share": 0.5283333333333333,
+      "malware_reports": 427,
+      "malware_share": 0.7116666666666667,
+      "median_first_relative_position": 0.9479760834541899
+    },
+    {
+      "api": "regenumkeyexw",
+      "benign_reports": 212,
+      "benign_share": 0.35333333333333333,
+      "malware_reports": 299,
+      "malware_share": 0.49833333333333335,
+      "median_first_relative_position": 0.01959794905184341
+    },
+    {
+      "api": "setupdibuilddriverinfolist",
+      "benign_reports": 3,
+      "benign_share": 0.005,
+      "malware_reports": 0,
+      "malware_share": 0.0,
+      "median_first_relative_position": 0.20868180007964954
+    },
+    {
+      "api": "ntunmapviewofsection",
+      "benign_reports": 400,
+      "benign_share": 0.6666666666666666,
+      "malware_reports": 419,
+      "malware_share": 0.6983333333333334,
+      "median_first_relative_position": 0.009784735812133072
+    },
+    {
+      "api": "ldrpcallinitroutine",
+      "benign_reports": 597,
+      "benign_share": 0.995,
+      "malware_reports": 519,
+      "malware_share": 0.865,
+      "median_first_relative_position": 0.017055227420686103
+    },
+    {
+      "api": "rtlremovevectoredexceptionhandler",
+      "benign_reports": 82,
+      "benign_share": 0.13666666666666666,
+      "malware_reports": 81,
+      "malware_share": 0.135,
+      "median_first_relative_position": 0.967391304347826
+    },
+    {
+      "api": "setupdigetclassdevsw",
+      "benign_reports": 15,
+      "benign_share": 0.025,
+      "malware_reports": 5,
+      "malware_share": 0.008333333333333333,
+      "median_first_relative_position": 0.489985959345263
+    },
+    {
+      "api": "cocreateinstance",
+      "benign_reports": 357,
+      "benign_share": 0.595,
+      "malware_reports": 240,
+      "malware_share": 0.4,
+      "median_first_relative_position": 0.0849443468072642
+    },
+    {
+      "api": "copyfilea",
+      "benign_reports": 1,
+      "benign_share": 0.0016666666666666668,
+      "malware_reports": 13,
+      "malware_share": 0.021666666666666667,
+      "median_first_relative_position": 0.27270830435387394
+    },
+    {
+      "api": "httpsendrequesta",
+      "benign_reports": 0,
+      "benign_share": 0.0,
+      "malware_reports": 1,
+      "malware_share": 0.0016666666666666668,
+      "median_first_relative_position": 0.782608695652174
+    },
+    {
+      "api": "removedirectoryw",
+      "benign_reports": 27,
+      "benign_share": 0.045,
+      "malware_reports": 69,
+      "malware_share": 0.115,
+      "median_first_relative_position": 0.9431917343748091
+    },
+    {
+      "api": "cryptacquirecontexta",
+      "benign_reports": 26,
+      "benign_share": 0.043333333333333335,
+      "malware_reports": 164,
+      "malware_share": 0.2733333333333333,
+      "median_first_relative_position": 0.30372548042059466
+    },
+    {
+      "api": "regqueryvalueexw",
+      "benign_reports": 527,
+      "benign_share": 0.8783333333333333,
+      "malware_reports": 417,
+      "malware_share": 0.695,
+      "median_first_relative_position": 0.07970689298646216
+    },
+    {
+      "api": "ntopenmutant",
+      "benign_reports": 243,
+      "benign_share": 0.405,
+      "malware_reports": 117,
+      "malware_share": 0.195,
+      "median_first_relative_position": 0.31136980382628976
+    },
+    {
+      "api": "recvfrom",
+      "benign_reports": 1,
+      "benign_share": 0.0016666666666666668,
+      "malware_reports": 0,
+      "malware_share": 0.0,
+      "median_first_relative_position": 0.36350253209280414
+    },
+    {
+      "api": "regqueryvalueexa",
+      "benign_reports": 109,
+      "benign_share": 0.18166666666666667,
+      "malware_reports": 197,
+      "malware_share": 0.3283333333333333,
+      "median_first_relative_position": 0.13043829730366846
+    },
+    {
+      "api": "ntrollbacktransaction",
+      "benign_reports": 0,
+      "benign_share": 0.0,
+      "malware_reports": 1,
+      "malware_share": 0.0016666666666666668,
+      "median_first_relative_position": 0.7103274559193955
+    },
+    {
+      "api": "getcursorpos",
+      "benign_reports": 81,
+      "benign_share": 0.135,
+      "malware_reports": 62,
+      "malware_share": 0.10333333333333333,
+      "median_first_relative_position": 0.5018181818181818
+    },
+    {
+      "api": "cryptencrypt",
+      "benign_reports": 1,
+      "benign_share": 0.0016666666666666668,
+      "malware_reports": 10,
+      "malware_share": 0.016666666666666666,
+      "median_first_relative_position": 0.5445220427760803
+    },
+    {
+      "api": "getcommandlinea",
+      "benign_reports": 102,
+      "benign_share": 0.17,
+      "malware_reports": 170,
+      "malware_share": 0.2833333333333333,
+      "median_first_relative_position": 0.013847741899385719
+    },
+    {
+      "api": "internetconnecta",
+      "benign_reports": 3,
+      "benign_share": 0.005,
+      "malware_reports": 2,
+      "malware_share": 0.0033333333333333335,
+      "median_first_relative_position": 0.9312515367592821
+    },
+    {
+      "api": "ntduplicateobject",
+      "benign_reports": 483,
+      "benign_share": 0.805,
+      "malware_reports": 456,
+      "malware_share": 0.76,
+      "median_first_relative_position": 0.05998286203941731
+    },
+    {
+      "api": "findwindoww",
+      "benign_reports": 86,
+      "benign_share": 0.14333333333333334,
+      "malware_reports": 94,
+      "malware_share": 0.15666666666666668,
+      "median_first_relative_position": 0.22532098014662583
+    },
+    {
+      "api": "regnotifychangekeyvalue",
+      "benign_reports": 249,
+      "benign_share": 0.415,
+      "malware_reports": 274,
+      "malware_share": 0.45666666666666667,
+      "median_first_relative_position": 0.27889908256880735
+    },
+    {
+      "api": "internetsetoptiona",
+      "benign_reports": 2,
+      "benign_share": 0.0033333333333333335,
+      "malware_reports": 5,
+      "malware_share": 0.008333333333333333,
+      "median_first_relative_position": 0.5950305952160208
+    },
+    {
+      "api": "enumdisplaydevicesw",
+      "benign_reports": 41,
+      "benign_share": 0.06833333333333333,
+      "malware_reports": 56,
+      "malware_share": 0.09333333333333334,
+      "median_first_relative_position": 0.47298949522169825
+    },
+    {
+      "api": "ntsetinformationthread",
+      "benign_reports": 1,
+      "benign_share": 0.0016666666666666668,
+      "malware_reports": 84,
+      "malware_share": 0.14,
+      "median_first_relative_position": 0.34238310708898945
+    },
+    {
+      "api": "createtimerqueuetimer",
+      "benign_reports": 15,
+      "benign_share": 0.025,
+      "malware_reports": 42,
+      "malware_share": 0.07,
+      "median_first_relative_position": 0.2534547981162665
+    },
+    {
+      "api": "srand",
+      "benign_reports": 19,
+      "benign_share": 0.03166666666666667,
+      "malware_reports": 138,
+      "malware_share": 0.23,
+      "median_first_relative_position": 0.29239766081871343
+    },
+    {
+      "api": "getcomputernamew",
+      "benign_reports": 26,
+      "benign_share": 0.043333333333333335,
+      "malware_reports": 126,
+      "malware_share": 0.21,
+      "median_first_relative_position": 0.6601371213570009
+    },
+    {
+      "api": "createprocesswithtokenw",
+      "benign_reports": 0,
+      "benign_share": 0.0,
+      "malware_reports": 2,
+      "malware_share": 0.0033333333333333335,
+      "median_first_relative_position": 0.994728955255271
+    },
+    {
+      "api": "ioctlsocket",
+      "benign_reports": 13,
+      "benign_share": 0.021666666666666667,
+      "malware_reports": 62,
+      "malware_share": 0.10333333333333333,
+      "median_first_relative_position": 0.41359119943222145
+    },
+    {
+      "api": "regqueryinfokeya",
+      "benign_reports": 3,
+      "benign_share": 0.005,
+      "malware_reports": 1,
+      "malware_share": 0.0016666666666666668,
+      "median_first_relative_position": 0.6994482887391005
+    },
+    {
+      "api": "virtualprotectex",
+      "benign_reports": 9,
+      "benign_share": 0.015,
+      "malware_reports": 13,
+      "malware_share": 0.021666666666666667,
+      "median_first_relative_position": 0.5918346380686389
+    },
+    {
+      "api": "regdeletekeyexw",
+      "benign_reports": 0,
+      "benign_share": 0.0,
+      "malware_reports": 17,
+      "malware_share": 0.028333333333333332,
+      "median_first_relative_position": 0.1330019761662375
+    },
+    {
+      "api": "systemtimetotzspecificlocaltime",
+      "benign_reports": 18,
+      "benign_share": 0.03,
+      "malware_reports": 7,
+      "malware_share": 0.011666666666666667,
+      "median_first_relative_position": 0.1926235554462749
+    },
+    {
+      "api": "regsetvalueexw",
+      "benign_reports": 65,
+      "benign_share": 0.10833333333333334,
+      "malware_reports": 171,
+      "malware_share": 0.285,
+      "median_first_relative_position": 0.6061138978063135
+    },
+    {
+      "api": "regdeletevaluew",
+      "benign_reports": 17,
+      "benign_share": 0.028333333333333332,
+      "malware_reports": 61,
+      "malware_share": 0.10166666666666667,
+      "median_first_relative_position": 0.7474935050697129
+    },
+    {
+      "api": "httpaddrequestheadersw",
+      "benign_reports": 1,
+      "benign_share": 0.0016666666666666668,
+      "malware_reports": 0,
+      "malware_share": 0.0,
+      "median_first_relative_position": 0.639247311827957
+    },
+    {
+      "api": "ntopenprocesstoken",
+      "benign_reports": 591,
+      "benign_share": 0.985,
+      "malware_reports": 461,
+      "malware_share": 0.7683333333333333,
+      "median_first_relative_position": 0.039051252200977195
+    },
+    {
+      "api": "bind",
+      "benign_reports": 13,
+      "benign_share": 0.021666666666666667,
+      "malware_reports": 194,
+      "malware_share": 0.3233333333333333,
+      "median_first_relative_position": 0.1531272465851905
+    },
+    {
+      "api": "getcomputernamea",
+      "benign_reports": 4,
+      "benign_share": 0.006666666666666667,
+      "malware_reports": 64,
+      "malware_share": 0.10666666666666667,
+      "median_first_relative_position": 0.23217820726020427
+    },
+    {
+      "api": "copyfilew",
+      "benign_reports": 13,
+      "benign_share": 0.021666666666666667,
+      "malware_reports": 31,
+      "malware_share": 0.051666666666666666,
+      "median_first_relative_position": 0.8267906588515475
+    },
+    {
+      "api": "createdirectoryw",
+      "benign_reports": 352,
+      "benign_share": 0.5866666666666667,
+      "malware_reports": 276,
+      "malware_share": 0.46,
+      "median_first_relative_position": 0.04105024454002876
+    },
+    {
+      "api": "winhttpreceiveresponse",
+      "benign_reports": 1,
+      "benign_share": 0.0016666666666666668,
+      "malware_reports": 153,
+      "malware_share": 0.255,
+      "median_first_relative_position": 0.20249324265830454
+    },
+    {
+      "api": "getasynckeystate",
+      "benign_reports": 0,
+      "benign_share": 0.0,
+      "malware_reports": 4,
+      "malware_share": 0.006666666666666667,
+      "median_first_relative_position": 0.6448603787450828
+    },
+    {
+      "api": "wsarecvfrom",
+      "benign_reports": 2,
+      "benign_share": 0.0033333333333333335,
+      "malware_reports": 11,
+      "malware_share": 0.018333333333333333,
+      "median_first_relative_position": 0.014020357241870965
+    },
+    {
+      "api": "ntwritefile",
+      "benign_reports": 487,
+      "benign_share": 0.8116666666666666,
+      "malware_reports": 348,
+      "malware_share": 0.58,
+      "median_first_relative_position": 0.12193126022913257
+    },
+    {
+      "api": "rtladdvectoredexceptionhandler",
+      "benign_reports": 170,
+      "benign_share": 0.2833333333333333,
+      "malware_reports": 259,
+      "malware_share": 0.43166666666666664,
+      "median_first_relative_position": 0.0834403080872914
+    },
+    {
+      "api": "regenumvaluew",
+      "benign_reports": 206,
+      "benign_share": 0.3433333333333333,
+      "malware_reports": 307,
+      "malware_share": 0.5116666666666667,
+      "median_first_relative_position": 0.027187765505522515
+    },
+    {
+      "api": "sendnotifymessagew",
+      "benign_reports": 19,
+      "benign_share": 0.03166666666666667,
+      "malware_reports": 48,
+      "malware_share": 0.08,
+      "median_first_relative_position": 0.28216062544420756
+    },
+    {
+      "api": "getlocaltime",
+      "benign_reports": 60,
+      "benign_share": 0.1,
+      "malware_reports": 98,
+      "malware_share": 0.16333333333333333,
+      "median_first_relative_position": 0.3181134370398822
+    },
+    {
+      "api": "startservicew",
+      "benign_reports": 251,
+      "benign_share": 0.41833333333333333,
+      "malware_reports": 185,
+      "malware_share": 0.30833333333333335,
+      "median_first_relative_position": 0.05405405405405406
+    },
+    {
+      "api": "postmessagew",
+      "benign_reports": 238,
+      "benign_share": 0.39666666666666667,
+      "malware_reports": 182,
+      "malware_share": 0.30333333333333334,
+      "median_first_relative_position": 0.9134155174961662
+    },
+    {
+      "api": "httpopenrequestw",
+      "benign_reports": 2,
+      "benign_share": 0.0033333333333333335,
+      "malware_reports": 0,
+      "malware_share": 0.0,
+      "median_first_relative_position": 0.5701364416734436
+    },
+    {
+      "api": "ntqueueapcthread",
+      "benign_reports": 24,
+      "benign_share": 0.04,
+      "malware_reports": 117,
+      "malware_share": 0.195,
+      "median_first_relative_position": 0.40785527255415377
+    },
+    {
+      "api": "shgetknownfolderpath",
+      "benign_reports": 44,
+      "benign_share": 0.07333333333333333,
+      "malware_reports": 51,
+      "malware_share": 0.085,
+      "median_first_relative_position": 0.13255371853217351
+    },
+    {
+      "api": "internetclosehandle",
+      "benign_reports": 5,
+      "benign_share": 0.008333333333333333,
+      "malware_reports": 29,
+      "malware_share": 0.04833333333333333,
+      "median_first_relative_position": 0.7716176048705852
+    },
+    {
+      "api": "initiatesystemshutdownexw",
+      "benign_reports": 0,
+      "benign_share": 0.0,
+      "malware_reports": 1,
+      "malware_share": 0.0016666666666666668,
+      "median_first_relative_position": 0.5470085470085471
+    },
+    {
+      "api": "lookupprivilegevaluew",
+      "benign_reports": 29,
+      "benign_share": 0.04833333333333333,
+      "malware_reports": 177,
+      "malware_share": 0.295,
+      "median_first_relative_position": 0.2555081689380967
+    },
+    {
+      "api": "regenumvaluea",
+      "benign_reports": 3,
+      "benign_share": 0.005,
+      "malware_reports": 2,
+      "malware_share": 0.0033333333333333335,
+      "median_first_relative_position": 0.6168860833091075
+    },
+    {
+      "api": "getvolumeinformationbyhandlew",
+      "benign_reports": 27,
+      "benign_share": 0.045,
+      "malware_reports": 150,
+      "malware_share": 0.25,
+      "median_first_relative_position": 0.4851694915254237
+    },
+    {
+      "api": "ntyieldexecution",
+      "benign_reports": 46,
+      "benign_share": 0.07666666666666666,
+      "malware_reports": 122,
+      "malware_share": 0.20333333333333334,
+      "median_first_relative_position": 0.5415463221796051
+    },
+    {
+      "api": "deleteservice",
+      "benign_reports": 0,
+      "benign_share": 0.0,
+      "malware_reports": 27,
+      "malware_share": 0.045,
+      "median_first_relative_position": 0.6919575113808801
+    },
+    {
+      "api": "ntdelayexecution",
+      "benign_reports": 277,
+      "benign_share": 0.46166666666666667,
+      "malware_reports": 381,
+      "malware_share": 0.635,
+      "median_first_relative_position": 0.7975269779591504
+    },
+    {
+      "api": "openscmanagerw",
+      "benign_reports": 39,
+      "benign_share": 0.065,
+      "malware_reports": 250,
+      "malware_share": 0.4166666666666667,
+      "median_first_relative_position": 0.2218253259510627
+    },
+    {
+      "api": "module32nextw",
+      "benign_reports": 11,
+      "benign_share": 0.018333333333333333,
+      "malware_reports": 7,
+      "malware_share": 0.011666666666666667,
+      "median_first_relative_position": 0.5413052349722893
+    },
+    {
+      "api": "changewindowmessagefilter",
+      "benign_reports": 20,
+      "benign_share": 0.03333333333333333,
+      "malware_reports": 27,
+      "malware_share": 0.045,
+      "median_first_relative_position": 0.7788778877887789
+    },
+    {
+      "api": "getsystemmetrics",
+      "benign_reports": 189,
+      "benign_share": 0.315,
+      "malware_reports": 183,
+      "malware_share": 0.305,
+      "median_first_relative_position": 0.10676729473598767
+    },
+    {
+      "api": "rtldecompressbuffer",
+      "benign_reports": 0,
+      "benign_share": 0.0,
+      "malware_reports": 7,
+      "malware_share": 0.011666666666666667,
+      "median_first_relative_position": 0.5957446808510638
+    },
+    {
+      "api": "wsastartup",
+      "benign_reports": 63,
+      "benign_share": 0.105,
+      "malware_reports": 269,
+      "malware_share": 0.4483333333333333,
+      "median_first_relative_position": 0.21675847528902403
+    },
+    {
+      "api": "wmi_next",
+      "benign_reports": 6,
+      "benign_share": 0.01,
+      "malware_reports": 8,
+      "malware_share": 0.013333333333333334,
+      "median_first_relative_position": 0.8180478176922106
+    },
+    {
+      "api": "ntcreateuserprocess",
+      "benign_reports": 270,
+      "benign_share": 0.45,
+      "malware_reports": 296,
+      "malware_share": 0.49333333333333335,
+      "median_first_relative_position": 0.7015775917578879
+    },
+    {
+      "api": "cryptdecodeobjectex",
+      "benign_reports": 23,
+      "benign_share": 0.03833333333333333,
+      "malware_reports": 169,
+      "malware_share": 0.2816666666666667,
+      "median_first_relative_position": 0.2301147548347377
+    },
+    {
+      "api": "winhttpsettimeouts",
+      "benign_reports": 6,
+      "benign_share": 0.01,
+      "malware_reports": 102,
+      "malware_share": 0.17,
+      "median_first_relative_position": 0.22580896211020346
+    },
+    {
+      "api": "bcryptencrypt",
+      "benign_reports": 0,
+      "benign_share": 0.0,
+      "malware_reports": 39,
+      "malware_share": 0.065,
+      "median_first_relative_position": 0.007938446507083537
+    },
+    {
+      "api": "dllloadnotification",
+      "benign_reports": 599,
+      "benign_share": 0.9983333333333333,
+      "malware_reports": 570,
+      "malware_share": 0.95,
+      "median_first_relative_position": 0.029223744292237442
+    },
+    {
+      "api": "shutdown",
+      "benign_reports": 0,
+      "benign_share": 0.0,
+      "malware_reports": 183,
+      "malware_share": 0.305,
+      "median_first_relative_position": 0.21710999281092738
+    },
+    {
+      "api": "ntquerymultiplevaluekey",
+      "benign_reports": 230,
+      "benign_share": 0.38333333333333336,
+      "malware_reports": 315,
+      "malware_share": 0.525,
+      "median_first_relative_position": 0.10738255033557047
+    },
+    {
+      "api": "ntquerydirectoryfile",
+      "benign_reports": 244,
+      "benign_share": 0.4066666666666667,
+      "malware_reports": 94,
+      "malware_share": 0.15666666666666668,
+      "median_first_relative_position": 0.10151274433183691
+    },
+    {
+      "api": "ntaddatomex",
+      "benign_reports": 383,
+      "benign_share": 0.6383333333333333,
+      "malware_reports": 174,
+      "malware_share": 0.29,
+      "median_first_relative_position": 0.00350765306122449
+    },
+    {
+      "api": "ntqueryinformationthread",
+      "benign_reports": 490,
+      "benign_share": 0.8166666666666667,
+      "malware_reports": 460,
+      "malware_share": 0.7666666666666667,
+      "median_first_relative_position": 0.14349516439991206
+    },
+    {
+      "api": "vbsmid",
+      "benign_reports": 2,
+      "benign_share": 0.0033333333333333335,
+      "malware_reports": 1,
+      "malware_share": 0.0016666666666666668,
+      "median_first_relative_position": 0.7801771871539314
+    },
+    {
+      "api": "gethostname",
+      "benign_reports": 12,
+      "benign_share": 0.02,
+      "malware_reports": 4,
+      "malware_share": 0.006666666666666667,
+      "median_first_relative_position": 0.5072272028532163
+    },
+    {
+      "api": "sendto",
+      "benign_reports": 2,
+      "benign_share": 0.0033333333333333335,
+      "malware_reports": 0,
+      "malware_share": 0.0,
+      "median_first_relative_position": 0.24986563378831933
+    },
+    {
+      "api": "ntqueryvaluekey",
+      "benign_reports": 598,
+      "benign_share": 0.9966666666666667,
+      "malware_reports": 572,
+      "malware_share": 0.9533333333333334,
+      "median_first_relative_position": 0.03144349204689977
+    },
+    {
+      "api": "setsockopt",
+      "benign_reports": 25,
+      "benign_share": 0.041666666666666664,
+      "malware_reports": 247,
+      "malware_share": 0.4116666666666667,
+      "median_first_relative_position": 0.18862521982654049
+    },
+    {
+      "api": "ntdeletekey",
+      "benign_reports": 3,
+      "benign_share": 0.005,
+      "malware_reports": 31,
+      "malware_share": 0.051666666666666666,
+      "median_first_relative_position": 0.9360669951281275
+    },
+    {
+      "api": "cryptdecrypt",
+      "benign_reports": 0,
+      "benign_share": 0.0,
+      "malware_reports": 42,
+      "malware_share": 0.07,
+      "median_first_relative_position": 0.7317337117694127
+    },
+    {
+      "api": "ntallocatevirtualmemory",
+      "benign_reports": 599,
+      "benign_share": 0.9983333333333333,
+      "malware_reports": 592,
+      "malware_share": 0.9866666666666667,
+      "median_first_relative_position": 0.015468729163888518
+    },
+    {
+      "api": "ntallocatevirtualmemoryex",
+      "benign_reports": 12,
+      "benign_share": 0.02,
+      "malware_reports": 52,
+      "malware_share": 0.08666666666666667,
+      "median_first_relative_position": 0.042648322121189644
+    },
+    {
+      "api": "getsystemtimeasfiletime",
+      "benign_reports": 575,
+      "benign_share": 0.9583333333333334,
+      "malware_reports": 555,
+      "malware_share": 0.925,
+      "median_first_relative_position": 0.08182394223067083
+    },
+    {
+      "api": "regopenkeyexa",
+      "benign_reports": 135,
+      "benign_share": 0.225,
+      "malware_reports": 224,
+      "malware_share": 0.37333333333333335,
+      "median_first_relative_position": 0.12566666666666668
+    },
+    {
+      "api": "ldrgetprocedureaddress",
+      "benign_reports": 123,
+      "benign_share": 0.205,
+      "malware_reports": 149,
+      "malware_share": 0.24833333333333332,
+      "median_first_relative_position": 0.28451871449692634
+    },
+    {
+      "api": "getaddrinfoexw",
+      "benign_reports": 11,
+      "benign_share": 0.018333333333333333,
+      "malware_reports": 172,
+      "malware_share": 0.2866666666666667,
+      "median_first_relative_position": 0.1337832951669278
+    },
+    {
+      "api": "ntcreateevent",
+      "benign_reports": 259,
+      "benign_share": 0.43166666666666664,
+      "malware_reports": 185,
+      "malware_share": 0.30833333333333335,
+      "median_first_relative_position": 0.35591301790785884
+    },
+    {
+      "api": "writeprocessmemory",
+      "benign_reports": 21,
+      "benign_share": 0.035,
+      "malware_reports": 63,
+      "malware_share": 0.105,
+      "median_first_relative_position": 0.647228762168941
+    },
+    {
+      "api": "regenumkeyexa",
+      "benign_reports": 18,
+      "benign_share": 0.03,
+      "malware_reports": 144,
+      "malware_share": 0.24,
+      "median_first_relative_position": 0.1978597570992824
+    },
+    {
+      "api": "timesetevent",
+      "benign_reports": 118,
+      "benign_share": 0.19666666666666666,
+      "malware_reports": 0,
+      "malware_share": 0.0,
+      "median_first_relative_position": 0.9945752962714378
+    },
+    {
+      "api": "rtlsetcurrenttransaction",
+      "benign_reports": 419,
+      "benign_share": 0.6983333333333334,
+      "malware_reports": 365,
+      "malware_share": 0.6083333333333333,
+      "median_first_relative_position": 0.06163144811029615
+    },
+    {
+      "api": "systemparametersinfow",
+      "benign_reports": 465,
+      "benign_share": 0.775,
+      "malware_reports": 181,
+      "malware_share": 0.3016666666666667,
+      "median_first_relative_position": 0.005631383754863813
+    },
+    {
+      "api": "bcryptimportkey",
+      "benign_reports": 0,
+      "benign_share": 0.0,
+      "malware_reports": 107,
+      "malware_share": 0.17833333333333334,
+      "median_first_relative_position": 0.20599785790789005
+    },
+    {
+      "api": "ldrgetprocedureaddressforcaller",
+      "benign_reports": 600,
+      "benign_share": 1.0,
+      "malware_reports": 590,
+      "malware_share": 0.9833333333333333,
+      "median_first_relative_position": 0.004067158778404979
+    },
+    {
+      "api": "rasconnectionnotificationw",
+      "benign_reports": 2,
+      "benign_share": 0.0033333333333333335,
+      "malware_reports": 40,
+      "malware_share": 0.06666666666666667,
+      "median_first_relative_position": 0.42347220558837795
+    },
+    {
+      "api": "internetopenw",
+      "benign_reports": 5,
+      "benign_share": 0.008333333333333333,
+      "malware_reports": 21,
+      "malware_share": 0.035,
+      "median_first_relative_position": 0.47912888040248636
+    },
+    {
+      "api": "ntopenevent",
+      "benign_reports": 388,
+      "benign_share": 0.6466666666666666,
+      "malware_reports": 338,
+      "malware_share": 0.5633333333333334,
+      "median_first_relative_position": 0.19164984797534568
+    },
+    {
+      "api": "sslencryptpacket",
+      "benign_reports": 0,
+      "benign_share": 0.0,
+      "malware_reports": 49,
+      "malware_share": 0.08166666666666667,
+      "median_first_relative_position": 0.11531475827955327
+    },
+    {
+      "api": "winhttpsetoption",
+      "benign_reports": 11,
+      "benign_share": 0.018333333333333333,
+      "malware_reports": 167,
+      "malware_share": 0.2783333333333333,
+      "median_first_relative_position": 0.15641697272844635
+    },
+    {
+      "api": "isvalidurl",
+      "benign_reports": 1,
+      "benign_share": 0.0016666666666666668,
+      "malware_reports": 3,
+      "malware_share": 0.005,
+      "median_first_relative_position": 0.3210664878865033
+    },
+    {
+      "api": "ntqueryfullattributesfile",
+      "benign_reports": 385,
+      "benign_share": 0.6416666666666667,
+      "malware_reports": 254,
+      "malware_share": 0.42333333333333334,
+      "median_first_relative_position": 0.26465554129225505
+    },
+    {
+      "api": "cryptacquirecontextw",
+      "benign_reports": 78,
+      "benign_share": 0.13,
+      "malware_reports": 157,
+      "malware_share": 0.26166666666666666,
+      "median_first_relative_position": 0.2603761348897536
+    },
+    {
+      "api": "setwindowshookexa",
+      "benign_reports": 7,
+      "benign_share": 0.011666666666666667,
+      "malware_reports": 12,
+      "malware_share": 0.02,
+      "median_first_relative_position": 0.07330567081604426
+    },
+    {
+      "api": "winhttpgetproxyforurl",
+      "benign_reports": 10,
+      "benign_share": 0.016666666666666666,
+      "malware_reports": 45,
+      "malware_share": 0.075,
+      "median_first_relative_position": 0.44655363066715814
+    },
+    {
+      "api": "winhttpsendrequest",
+      "benign_reports": 8,
+      "benign_share": 0.013333333333333334,
+      "malware_reports": 155,
+      "malware_share": 0.25833333333333336,
+      "median_first_relative_position": 0.2055084745762712
+    },
+    {
+      "api": "ntcreatemutant",
+      "benign_reports": 395,
+      "benign_share": 0.6583333333333333,
+      "malware_reports": 408,
+      "malware_share": 0.68,
+      "median_first_relative_position": 0.21600084997875052
+    },
+    {
+      "api": "vbsleft",
+      "benign_reports": 2,
+      "benign_share": 0.0033333333333333335,
+      "malware_reports": 1,
+      "malware_share": 0.0016666666666666668,
+      "median_first_relative_position": 0.8272425249169435
+    },
+    {
+      "api": "updateprocthreadattribute",
+      "benign_reports": 11,
+      "benign_share": 0.018333333333333333,
+      "malware_reports": 57,
+      "malware_share": 0.095,
+      "median_first_relative_position": 0.5766129032258065
+    },
+    {
+      "api": "ntcreatesection",
+      "benign_reports": 593,
+      "benign_share": 0.9883333333333333,
+      "malware_reports": 529,
+      "malware_share": 0.8816666666666667,
+      "median_first_relative_position": 0.02091266797472592
+    },
+    {
+      "api": "cryptenumprovidersw",
+      "benign_reports": 1,
+      "benign_share": 0.0016666666666666668,
+      "malware_reports": 0,
+      "malware_share": 0.0,
+      "median_first_relative_position": 0.05246731833706277
+    },
+    {
+      "api": "findfirstfileexw",
+      "benign_reports": 477,
+      "benign_share": 0.795,
+      "malware_reports": 382,
+      "malware_share": 0.6366666666666667,
+      "median_first_relative_position": 0.047910295616717634
+    },
+    {
+      "api": "ntterminatethread",
+      "benign_reports": 328,
+      "benign_share": 0.5466666666666666,
+      "malware_reports": 368,
+      "malware_share": 0.6133333333333333,
+      "median_first_relative_position": 0.932246323319534
+    },
+    {
+      "api": "regdeletevaluea",
+      "benign_reports": 0,
+      "benign_share": 0.0,
+      "malware_reports": 3,
+      "malware_share": 0.005,
+      "median_first_relative_position": 0.8594771241830066
+    },
+    {
+      "api": "accept",
+      "benign_reports": 5,
+      "benign_share": 0.008333333333333333,
+      "malware_reports": 4,
+      "malware_share": 0.006666666666666667,
+      "median_first_relative_position": 0.33451118963486454
+    },
+    {
+      "api": "ntqueryinformationfile",
+      "benign_reports": 570,
+      "benign_share": 0.95,
+      "malware_reports": 466,
+      "malware_share": 0.7766666666666666,
+      "median_first_relative_position": 0.015728977551320904
+    },
+    {
+      "api": "findwindowa",
+      "benign_reports": 6,
+      "benign_share": 0.01,
+      "malware_reports": 7,
+      "malware_share": 0.011666666666666667,
+      "median_first_relative_position": 0.25348189415041783
+    },
+    {
+      "api": "ntsetcontextthread",
+      "benign_reports": 1,
+      "benign_share": 0.0016666666666666668,
+      "malware_reports": 43,
+      "malware_share": 0.07166666666666667,
+      "median_first_relative_position": 0.9528474867861645
+    },
+    {
+      "api": "ntqueryinformationatom",
+      "benign_reports": 4,
+      "benign_share": 0.006666666666666667,
+      "malware_reports": 13,
+      "malware_share": 0.021666666666666667,
+      "median_first_relative_position": 0.25688440355681363
+    },
+    {
+      "api": "httpopenrequesta",
+      "benign_reports": 1,
+      "benign_share": 0.0016666666666666668,
+      "malware_reports": 2,
+      "malware_share": 0.0033333333333333335,
+      "median_first_relative_position": 0.8839779005524862
+    },
+    {
+      "api": "getcomputernameexw",
+      "benign_reports": 34,
+      "benign_share": 0.056666666666666664,
+      "malware_reports": 124,
+      "malware_share": 0.20666666666666667,
+      "median_first_relative_position": 0.2978205849268841
+    },
+    {
+      "api": "createprocessinternalw",
+      "benign_reports": 256,
+      "benign_share": 0.4266666666666667,
+      "malware_reports": 241,
+      "malware_share": 0.40166666666666667,
+      "median_first_relative_position": 0.189873417721519
+    },
+    {
+      "api": "messageboxtimeoutw",
+      "benign_reports": 1,
+      "benign_share": 0.0016666666666666668,
+      "malware_reports": 0,
+      "malware_share": 0.0,
+      "median_first_relative_position": 0.8524720893141946
+    },
+    {
+      "api": "getdiskfreespacew",
+      "benign_reports": 1,
+      "benign_share": 0.0016666666666666668,
+      "malware_reports": 1,
+      "malware_share": 0.0016666666666666668,
+      "median_first_relative_position": 0.538949710710633
+    },
+    {
+      "api": "getusernamew",
+      "benign_reports": 27,
+      "benign_share": 0.045,
+      "malware_reports": 111,
+      "malware_share": 0.185,
+      "median_first_relative_position": 0.4717754980580232
+    },
+    {
+      "api": "getcurrenthwprofilew",
+      "benign_reports": 0,
+      "benign_share": 0.0,
+      "malware_reports": 30,
+      "malware_share": 0.05,
+      "median_first_relative_position": 0.009899437693257091
+    },
+    {
+      "api": "winhttpopenrequest",
+      "benign_reports": 9,
+      "benign_share": 0.015,
+      "malware_reports": 161,
+      "malware_share": 0.2683333333333333,
+      "median_first_relative_position": 0.10050207567652489
+    },
+    {
+      "api": "getadaptersinfo",
+      "benign_reports": 4,
+      "benign_share": 0.006666666666666667,
+      "malware_reports": 18,
+      "malware_share": 0.03,
+      "median_first_relative_position": 0.5196255557083276
+    },
+    {
+      "api": "cocreateinstanceex",
+      "benign_reports": 254,
+      "benign_share": 0.42333333333333334,
+      "malware_reports": 160,
+      "malware_share": 0.26666666666666666,
+      "median_first_relative_position": 0.283578684322694
+    },
+    {
+      "api": "regenumkeyw",
+      "benign_reports": 156,
+      "benign_share": 0.26,
+      "malware_reports": 73,
+      "malware_share": 0.12166666666666667,
+      "median_first_relative_position": 0.47270687936191425
+    },
+    {
+      "api": "setunhandledexceptionfilter",
+      "benign_reports": 433,
+      "benign_share": 0.7216666666666667,
+      "malware_reports": 412,
+      "malware_share": 0.6866666666666666,
+      "median_first_relative_position": 0.051094890510948905
+    },
+    {
+      "api": "wmi_get",
+      "benign_reports": 29,
+      "benign_share": 0.04833333333333333,
+      "malware_reports": 108,
+      "malware_share": 0.18,
+      "median_first_relative_position": 0.5020408163265306
+    },
+    {
+      "api": "copyfileexw",
+      "benign_reports": 7,
+      "benign_share": 0.011666666666666667,
+      "malware_reports": 26,
+      "malware_share": 0.043333333333333335,
+      "median_first_relative_position": 0.7696717787014477
+    },
+    {
+      "api": "ldrloaddll",
+      "benign_reports": 532,
+      "benign_share": 0.8866666666666667,
+      "malware_reports": 562,
+      "malware_share": 0.9366666666666666,
+      "median_first_relative_position": 0.011533592718238811
+    },
+    {
+      "api": "cointernetsetfeatureenabled",
+      "benign_reports": 2,
+      "benign_share": 0.0033333333333333335,
+      "malware_reports": 0,
+      "malware_share": 0.0,
+      "median_first_relative_position": 0.8593643354555225
+    },
+    {
+      "api": "ntsavekeyex",
+      "benign_reports": 0,
+      "benign_share": 0.0,
+      "malware_reports": 1,
+      "malware_share": 0.0016666666666666668,
+      "median_first_relative_position": 0.9358432577794852
+    },
+    {
+      "api": "cogetclassobject",
+      "benign_reports": 157,
+      "benign_share": 0.26166666666666666,
+      "malware_reports": 142,
+      "malware_share": 0.23666666666666666,
+      "median_first_relative_position": 0.24064171122994651
+    },
+    {
+      "api": "createservicea",
+      "benign_reports": 0,
+      "benign_share": 0.0,
+      "malware_reports": 2,
+      "malware_share": 0.0033333333333333335,
+      "median_first_relative_position": 0.04348446295011181
+    },
+    {
+      "api": "enumtimeformatsw",
+      "benign_reports": 1,
+      "benign_share": 0.0016666666666666668,
+      "malware_reports": 0,
+      "malware_share": 0.0,
+      "median_first_relative_position": 0.10611643330876934
+    },
+    {
+      "api": "winhttpconnect",
+      "benign_reports": 9,
+      "benign_share": 0.015,
+      "malware_reports": 166,
+      "malware_share": 0.27666666666666667,
+      "median_first_relative_position": 0.0890125173852573
+    },
+    {
+      "api": "openservicea",
+      "benign_reports": 5,
+      "benign_share": 0.008333333333333333,
+      "malware_reports": 44,
+      "malware_share": 0.07333333333333333,
+      "median_first_relative_position": 0.3154394299287411
+    },
+    {
+      "api": "deletefilea",
+      "benign_reports": 5,
+      "benign_share": 0.008333333333333333,
+      "malware_reports": 19,
+      "malware_share": 0.03166666666666667,
+      "median_first_relative_position": 0.4318064422818653
+    },
+    {
+      "api": "globalmemorystatusex",
+      "benign_reports": 182,
+      "benign_share": 0.30333333333333334,
+      "malware_reports": 270,
+      "malware_share": 0.45,
+      "median_first_relative_position": 0.10863521268338613
+    },
+    {
+      "api": "enumcalendarinfow",
+      "benign_reports": 4,
+      "benign_share": 0.006666666666666667,
+      "malware_reports": 22,
+      "malware_share": 0.03666666666666667,
+      "median_first_relative_position": 0.2882885771543086
+    },
+    {
+      "api": "globalmemorystatus",
+      "benign_reports": 112,
+      "benign_share": 0.18666666666666668,
+      "malware_reports": 56,
+      "malware_share": 0.09333333333333334,
+      "median_first_relative_position": 0.9885938541935188
+    },
+    {
+      "api": "postthreadmessagea",
+      "benign_reports": 2,
+      "benign_share": 0.0033333333333333335,
+      "malware_reports": 5,
+      "malware_share": 0.008333333333333333,
+      "median_first_relative_position": 0.9526462395543176
+    },
+    {
+      "api": "findwindowexa",
+      "benign_reports": 1,
+      "benign_share": 0.0016666666666666668,
+      "malware_reports": 0,
+      "malware_share": 0.0,
+      "median_first_relative_position": 0.14177506345177665
+    },
+    {
+      "api": "setupdigetdeviceregistrypropertyw",
+      "benign_reports": 4,
+      "benign_share": 0.006666666666666667,
+      "malware_reports": 9,
+      "malware_share": 0.015,
+      "median_first_relative_position": 0.2785317830085484
+    },
+    {
+      "api": "winexec",
+      "benign_reports": 0,
+      "benign_share": 0.0,
+      "malware_reports": 2,
+      "malware_share": 0.0033333333333333335,
+      "median_first_relative_position": 0.48671263377145735
+    },
+    {
+      "api": "createservicew",
+      "benign_reports": 0,
+      "benign_share": 0.0,
+      "malware_reports": 1,
+      "malware_share": 0.0016666666666666668,
+      "median_first_relative_position": 0.5792759051186017
+    },
+    {
+      "api": "getdiskfreespacea",
+      "benign_reports": 1,
+      "benign_share": 0.0016666666666666668,
+      "malware_reports": 9,
+      "malware_share": 0.015,
+      "median_first_relative_position": 0.42648634796384305
+    },
+    {
+      "api": "removedirectorya",
+      "benign_reports": 3,
+      "benign_share": 0.005,
+      "malware_reports": 10,
+      "malware_share": 0.016666666666666666,
+      "median_first_relative_position": 0.43891402714932126
+    },
+    {
+      "api": "regdeletekeyw",
+      "benign_reports": 10,
+      "benign_share": 0.016666666666666666,
+      "malware_reports": 30,
+      "malware_share": 0.05,
+      "median_first_relative_position": 0.8321256038647343
+    },
+    {
+      "api": "rtlwow64getthreadcontext",
+      "benign_reports": 0,
+      "benign_share": 0.0,
+      "malware_reports": 3,
+      "malware_share": 0.005,
+      "median_first_relative_position": 0.9648687012065295
+    },
+    {
+      "api": "ntenumeratevaluekey",
+      "benign_reports": 327,
+      "benign_share": 0.545,
+      "malware_reports": 191,
+      "malware_share": 0.31833333333333336,
+      "median_first_relative_position": 0.13376781122404524
+    },
+    {
+      "api": "vbsascw",
+      "benign_reports": 2,
+      "benign_share": 0.0033333333333333335,
+      "malware_reports": 1,
+      "malware_share": 0.0016666666666666668,
+      "median_first_relative_position": 0.7807308970099668
+    },
+    {
+      "api": "ntmapviewofsectionex",
+      "benign_reports": 1,
+      "benign_share": 0.0016666666666666668,
+      "malware_reports": 1,
+      "malware_share": 0.0016666666666666668,
+      "median_first_relative_position": 0.020856368441006547
+    },
+    {
+      "api": "connect",
+      "benign_reports": 10,
+      "benign_share": 0.016666666666666666,
+      "malware_reports": 37,
+      "malware_share": 0.06166666666666667,
+      "median_first_relative_position": 0.4978410906741917
+    },
+    {
+      "api": "ntwow64writevirtualmemory64",
+      "benign_reports": 3,
+      "benign_share": 0.005,
+      "malware_reports": 5,
+      "malware_share": 0.008333333333333333,
+      "median_first_relative_position": 0.5987187243980474
+    },
+    {
+      "api": "unhookwindowshookex",
+      "benign_reports": 10,
+      "benign_share": 0.016666666666666666,
+      "malware_reports": 9,
+      "malware_share": 0.015,
+      "median_first_relative_position": 0.8880382775119617
+    },
+    {
+      "api": "rtlcreateuserthread",
+      "benign_reports": 1,
+      "benign_share": 0.0016666666666666668,
+      "malware_reports": 20,
+      "malware_share": 0.03333333333333333,
+      "median_first_relative_position": 0.47191011235955055
+    },
+    {
+      "api": "internetgetconnectedstate",
+      "benign_reports": 2,
+      "benign_share": 0.0033333333333333335,
+      "malware_reports": 3,
+      "malware_share": 0.005,
+      "median_first_relative_position": 0.370652945351313
+    },
+    {
+      "api": "createprocessw",
+      "benign_reports": 41,
+      "benign_share": 0.06833333333333333,
+      "malware_reports": 131,
+      "malware_share": 0.21833333333333332,
+      "median_first_relative_position": 0.8138307100320263
+    },
+    {
+      "api": "select",
+      "benign_reports": 5,
+      "benign_share": 0.008333333333333333,
+      "malware_reports": 13,
+      "malware_share": 0.021666666666666667,
+      "median_first_relative_position": 0.559458507511833
+    },
+    {
+      "api": "ntpowerinformation",
+      "benign_reports": 249,
+      "benign_share": 0.415,
+      "malware_reports": 81,
+      "malware_share": 0.135,
+      "median_first_relative_position": 0.09730162777447249
+    },
+    {
+      "api": "httpscertificatetrust",
+      "benign_reports": 0,
+      "benign_share": 0.0,
+      "malware_reports": 3,
+      "malware_share": 0.005,
+      "median_first_relative_position": 0.6385394292727831
+    },
+    {
+      "api": "ntcreatefile",
+      "benign_reports": 566,
+      "benign_share": 0.9433333333333334,
+      "malware_reports": 519,
+      "malware_share": 0.865,
+      "median_first_relative_position": 0.048464163822525594
+    },
+    {
+      "api": "internetconnectw",
+      "benign_reports": 1,
+      "benign_share": 0.0016666666666666668,
+      "malware_reports": 1,
+      "malware_share": 0.0016666666666666668,
+      "median_first_relative_position": 0.5276610644257703
+    },
+    {
+      "api": "httpqueryinfoa",
+      "benign_reports": 0,
+      "benign_share": 0.0,
+      "malware_reports": 1,
+      "malware_share": 0.0016666666666666668,
+      "median_first_relative_position": 0.6885200553250346
+    },
+    {
+      "api": "sendnotifymessagea",
+      "benign_reports": 0,
+      "benign_share": 0.0,
+      "malware_reports": 2,
+      "malware_share": 0.0033333333333333335,
+      "median_first_relative_position": 0.11858356940509915
+    },
+    {
+      "api": "ntopenkeyex",
+      "benign_reports": 422,
+      "benign_share": 0.7033333333333334,
+      "malware_reports": 370,
+      "malware_share": 0.6166666666666667,
+      "median_first_relative_position": 0.07001447866218871
+    },
+    {
+      "api": "nttestalert",
+      "benign_reports": 600,
+      "benign_share": 1.0,
+      "malware_reports": 599,
+      "malware_share": 0.9983333333333333,
+      "median_first_relative_position": 0.002073255010366275
+    },
+    {
+      "api": "ntenumeratekey",
+      "benign_reports": 402,
+      "benign_share": 0.67,
+      "malware_reports": 365,
+      "malware_share": 0.6083333333333333,
+      "median_first_relative_position": 0.31617161716171616
+    },
+    {
+      "api": "systemparametersinfoa",
+      "benign_reports": 24,
+      "benign_share": 0.04,
+      "malware_reports": 17,
+      "malware_share": 0.028333333333333332,
+      "median_first_relative_position": 0.19158713326263696
+    },
+    {
+      "api": "internetopena",
+      "benign_reports": 5,
+      "benign_share": 0.008333333333333333,
+      "malware_reports": 14,
+      "malware_share": 0.023333333333333334,
+      "median_first_relative_position": 0.059222116817997016
+    },
+    {
+      "api": "strcmpnicw",
+      "benign_reports": 0,
+      "benign_share": 0.0,
+      "malware_reports": 2,
+      "malware_share": 0.0033333333333333335,
+      "median_first_relative_position": 0.40541673721733484
+    },
+    {
+      "api": "commandlinetoargvw",
+      "benign_reports": 94,
+      "benign_share": 0.15666666666666668,
+      "malware_reports": 99,
+      "malware_share": 0.165,
+      "median_first_relative_position": 0.12974976830398516
+    },
+    {
+      "api": "ntcreatekey",
+      "benign_reports": 263,
+      "benign_share": 0.43833333333333335,
+      "malware_reports": 215,
+      "malware_share": 0.35833333333333334,
+      "median_first_relative_position": 0.3084515421120261
+    },
+    {
+      "api": "findwindowexw",
+      "benign_reports": 15,
+      "benign_share": 0.025,
+      "malware_reports": 41,
+      "malware_share": 0.06833333333333333,
+      "median_first_relative_position": 0.05172114649452524
+    },
+    {
+      "api": "ntsetvaluekey",
+      "benign_reports": 139,
+      "benign_share": 0.23166666666666666,
+      "malware_reports": 65,
+      "malware_share": 0.10833333333333334,
+      "median_first_relative_position": 0.9168242117717573
+    },
+    {
+      "api": "ntreadfile",
+      "benign_reports": 556,
+      "benign_share": 0.9266666666666666,
+      "malware_reports": 386,
+      "malware_share": 0.6433333333333333,
+      "median_first_relative_position": 0.09866054630212451
+    },
+    {
+      "api": "deviceiocontrol",
+      "benign_reports": 492,
+      "benign_share": 0.82,
+      "malware_reports": 404,
+      "malware_share": 0.6733333333333333,
+      "median_first_relative_position": 0.0691961012636391
+    },
+    {
+      "api": "msgwaitformultipleobjectsex",
+      "benign_reports": 38,
+      "benign_share": 0.06333333333333334,
+      "malware_reports": 10,
+      "malware_share": 0.016666666666666666,
+      "median_first_relative_position": 0.2776356221995361
+    },
+    {
+      "api": "dnsquery_a",
+      "benign_reports": 0,
+      "benign_share": 0.0,
+      "malware_reports": 14,
+      "malware_share": 0.023333333333333334,
+      "median_first_relative_position": 0.4489795918367347
+    },
+    {
+      "api": "cryptgenrandom",
+      "benign_reports": 51,
+      "benign_share": 0.085,
+      "malware_reports": 123,
+      "malware_share": 0.205,
+      "median_first_relative_position": 0.19382310298123853
+    },
+    {
+      "api": "regsetvalueexa",
+      "benign_reports": 5,
+      "benign_share": 0.008333333333333333,
+      "malware_reports": 84,
+      "malware_share": 0.14,
+      "median_first_relative_position": 0.16989041259955687
+    },
+    {
+      "api": "closesocket",
+      "benign_reports": 28,
+      "benign_share": 0.04666666666666667,
+      "malware_reports": 277,
+      "malware_share": 0.46166666666666667,
+      "median_first_relative_position": 0.186548874323169
+    },
+    {
+      "api": "lockresource",
+      "benign_reports": 41,
+      "benign_share": 0.06833333333333333,
+      "malware_reports": 109,
+      "malware_share": 0.18166666666666667,
+      "median_first_relative_position": 0.3177164353529198
+    },
+    {
+      "api": "internetreadfile",
+      "benign_reports": 0,
+      "benign_share": 0.0,
+      "malware_reports": 14,
+      "malware_share": 0.023333333333333334,
+      "median_first_relative_position": 0.9507109934225955
+    },
+    {
+      "api": "httpqueryinfow",
+      "benign_reports": 1,
+      "benign_share": 0.0016666666666666668,
+      "malware_reports": 0,
+      "malware_share": 0.0,
+      "median_first_relative_position": 0.9333333333333333
+    },
+    {
+      "api": "internetopenurlw",
+      "benign_reports": 2,
+      "benign_share": 0.0033333333333333335,
+      "malware_reports": 12,
+      "malware_share": 0.02,
+      "median_first_relative_position": 0.6738247452828883
+    },
+    {
+      "api": "isdebuggerpresent",
+      "benign_reports": 387,
+      "benign_share": 0.645,
+      "malware_reports": 264,
+      "malware_share": 0.44,
+      "median_first_relative_position": 0.2525622254758419
+    },
+    {
+      "api": "connectex",
+      "benign_reports": 2,
+      "benign_share": 0.0033333333333333335,
+      "malware_reports": 185,
+      "malware_share": 0.30833333333333335,
+      "median_first_relative_position": 0.1984126984126984
+    },
+    {
+      "api": "findresourceexa",
+      "benign_reports": 26,
+      "benign_share": 0.043333333333333335,
+      "malware_reports": 38,
+      "malware_share": 0.06333333333333334,
+      "median_first_relative_position": 0.13042895185547063
+    },
+    {
+      "api": "ntclose",
+      "benign_reports": 600,
+      "benign_share": 1.0,
+      "malware_reports": 593,
+      "malware_share": 0.9883333333333333,
+      "median_first_relative_position": 0.010368663594470046
+    },
+    {
+      "api": "wtgetsignatureinfo",
+      "benign_reports": 4,
+      "benign_share": 0.006666666666666667,
+      "malware_reports": 33,
+      "malware_share": 0.055,
+      "median_first_relative_position": 0.22957627118644067
+    },
+    {
+      "api": "ntopenprocess",
+      "benign_reports": 407,
+      "benign_share": 0.6783333333333333,
+      "malware_reports": 305,
+      "malware_share": 0.5083333333333333,
+      "median_first_relative_position": 0.260921880694459
+    },
+    {
+      "api": "module32firstw",
+      "benign_reports": 12,
+      "benign_share": 0.02,
+      "malware_reports": 7,
+      "malware_share": 0.011666666666666667,
+      "median_first_relative_position": 0.8026584867075665
+    },
+    {
+      "api": "wsarecv",
+      "benign_reports": 3,
+      "benign_share": 0.005,
+      "malware_reports": 192,
+      "malware_share": 0.32,
+      "median_first_relative_position": 0.20268361581920905
+    },
+    {
+      "api": "syscall",
+      "benign_reports": 5,
+      "benign_share": 0.008333333333333333,
+      "malware_reports": 14,
+      "malware_share": 0.023333333333333334,
+      "median_first_relative_position": 0.006397952655150352
+    },
+    {
+      "api": "loadresource",
+      "benign_reports": 152,
+      "benign_share": 0.25333333333333335,
+      "malware_reports": 223,
+      "malware_share": 0.37166666666666665,
+      "median_first_relative_position": 0.16352237104588202
+    },
+    {
+      "api": "ntfindatom",
+      "benign_reports": 40,
+      "benign_share": 0.06666666666666667,
+      "malware_reports": 49,
+      "malware_share": 0.08166666666666667,
+      "median_first_relative_position": 0.25773213318895505
+    },
+    {
+      "api": "createremotethreadex",
+      "benign_reports": 355,
+      "benign_share": 0.5916666666666667,
+      "malware_reports": 300,
+      "malware_share": 0.5,
+      "median_first_relative_position": 0.1637696335078534
+    },
+    {
+      "api": "wsaconnect",
+      "benign_reports": 0,
+      "benign_share": 0.0,
+      "malware_reports": 55,
+      "malware_share": 0.09166666666666666,
+      "median_first_relative_position": 0.8931626600062441
+    },
+    {
+      "api": "getsystemdefaultlangid",
+      "benign_reports": 102,
+      "benign_share": 0.17,
+      "malware_reports": 48,
+      "malware_share": 0.08,
+      "median_first_relative_position": 0.17483428102726573
+    },
+    {
+      "api": "ntresumethread",
+      "benign_reports": 387,
+      "benign_share": 0.645,
+      "malware_reports": 371,
+      "malware_share": 0.6183333333333333,
+      "median_first_relative_position": 0.22854360100952262
+    },
+    {
+      "api": "ntwow64readvirtualmemory64",
+      "benign_reports": 0,
+      "benign_share": 0.0,
+      "malware_reports": 27,
+      "malware_share": 0.045,
+      "median_first_relative_position": 0.43130990415335463
+    },
+    {
+      "api": "wsasendto",
+      "benign_reports": 2,
+      "benign_share": 0.0033333333333333335,
+      "malware_reports": 11,
+      "malware_share": 0.018333333333333333,
+      "median_first_relative_position": 0.01390154065507545
+    },
+    {
+      "api": "ntresumeprocess",
+      "benign_reports": 1,
+      "benign_share": 0.0016666666666666668,
+      "malware_reports": 1,
+      "malware_share": 0.0016666666666666668,
+      "median_first_relative_position": 0.5841744729505729
+    },
+    {
+      "api": "outputdebugstringa",
+      "benign_reports": 12,
+      "benign_share": 0.02,
+      "malware_reports": 9,
+      "malware_share": 0.015,
+      "median_first_relative_position": 0.5688225538971807
+    },
+    {
+      "api": "crypthashdata",
+      "benign_reports": 55,
+      "benign_share": 0.09166666666666666,
+      "malware_reports": 225,
+      "malware_share": 0.375,
+      "median_first_relative_position": 0.37477955940390417
+    },
+    {
+      "api": "cryptretrieveobjectbyurlw",
+      "benign_reports": 6,
+      "benign_share": 0.01,
+      "malware_reports": 115,
+      "malware_share": 0.19166666666666668,
+      "median_first_relative_position": 0.3213743864346274
+    },
+    {
+      "api": "ntopensection",
+      "benign_reports": 519,
+      "benign_share": 0.865,
+      "malware_reports": 474,
+      "malware_share": 0.79,
+      "median_first_relative_position": 0.05456171735241502
+    },
+    {
+      "api": "openservicew",
+      "benign_reports": 38,
+      "benign_share": 0.06333333333333334,
+      "malware_reports": 247,
+      "malware_share": 0.4116666666666667,
+      "median_first_relative_position": 0.2190301921317475
+    },
+    {
+      "api": "vbsstrcomp",
+      "benign_reports": 2,
+      "benign_share": 0.0033333333333333335,
+      "malware_reports": 1,
+      "malware_share": 0.0016666666666666668,
+      "median_first_relative_position": 0.7757475083056479
+    },
+    {
+      "api": "ntsuspendthread",
+      "benign_reports": 14,
+      "benign_share": 0.023333333333333334,
+      "malware_reports": 127,
+      "malware_share": 0.21166666666666667,
+      "median_first_relative_position": 0.17647058823529413
+    },
+    {
+      "api": "process32firstw",
+      "benign_reports": 245,
+      "benign_share": 0.4083333333333333,
+      "malware_reports": 101,
+      "malware_share": 0.16833333333333333,
+      "median_first_relative_position": 0.7269350729986719
+    },
+    {
+      "api": "rtldospathnametontpathname_u",
+      "benign_reports": 332,
+      "benign_share": 0.5533333333333333,
+      "malware_reports": 233,
+      "malware_share": 0.3883333333333333,
+      "median_first_relative_position": 0.041965764770844835
+    },
+    {
+      "api": "msiinstallproductw",
+      "benign_reports": 0,
+      "benign_share": 0.0,
+      "malware_reports": 15,
+      "malware_share": 0.025,
+      "median_first_relative_position": 0.7886435331230284
+    },
+    {
+      "api": "regcreatekeyexa",
+      "benign_reports": 8,
+      "benign_share": 0.013333333333333334,
+      "malware_reports": 71,
+      "malware_share": 0.11833333333333333,
+      "median_first_relative_position": 0.16967318730233102
+    },
+    {
+      "api": "k32enumprocesses",
+      "benign_reports": 25,
+      "benign_share": 0.041666666666666664,
+      "malware_reports": 21,
+      "malware_share": 0.035,
+      "median_first_relative_position": 0.515745706222458
+    },
+    {
+      "api": "ntloadkeyex",
+      "benign_reports": 1,
+      "benign_share": 0.0016666666666666668,
+      "malware_reports": 8,
+      "malware_share": 0.013333333333333334,
+      "median_first_relative_position": 0.8549511854951185
+    },
+    {
+      "api": "ntmapviewofsection",
+      "benign_reports": 593,
+      "benign_share": 0.9883333333333333,
+      "malware_reports": 539,
+      "malware_share": 0.8983333333333333,
+      "median_first_relative_position": 0.02127884139773803
+    },
+    {
+      "api": "ntqueryattributesfile",
+      "benign_reports": 541,
+      "benign_share": 0.9016666666666666,
+      "malware_reports": 528,
+      "malware_share": 0.88,
+      "median_first_relative_position": 0.027450980392156862
+    },
+    {
+      "api": "regqueryinfokeyw",
+      "benign_reports": 202,
+      "benign_share": 0.33666666666666667,
+      "malware_reports": 341,
+      "malware_share": 0.5683333333333334,
+      "median_first_relative_position": 0.017848133198789102
+    },
+    {
+      "api": "regdeletekeyexa",
+      "benign_reports": 1,
+      "benign_share": 0.0016666666666666668,
+      "malware_reports": 0,
+      "malware_share": 0.0,
+      "median_first_relative_position": 0.9621561456511369
+    },
+    {
+      "api": "ntqueryinformationtoken",
+      "benign_reports": 599,
+      "benign_share": 0.9983333333333333,
+      "malware_reports": 494,
+      "malware_share": 0.8233333333333334,
+      "median_first_relative_position": 0.029810954920019388
+    },
+    {
+      "api": "sizeofresource",
+      "benign_reports": 97,
+      "benign_share": 0.16166666666666665,
+      "malware_reports": 208,
+      "malware_share": 0.3466666666666667,
+      "median_first_relative_position": 0.18554770618776065
+    },
+    {
+      "api": "regdeletekeya",
+      "benign_reports": 0,
+      "benign_share": 0.0,
+      "malware_reports": 5,
+      "malware_share": 0.008333333333333333,
+      "median_first_relative_position": 0.9851160443995963
+    },
+    {
+      "api": "outputdebugstringw",
+      "benign_reports": 33,
+      "benign_share": 0.055,
+      "malware_reports": 4,
+      "malware_share": 0.006666666666666667,
+      "median_first_relative_position": 0.3482299774039669
+    },
+    {
+      "api": "rmstartsession",
+      "benign_reports": 0,
+      "benign_share": 0.0,
+      "malware_reports": 23,
+      "malware_share": 0.03833333333333333,
+      "median_first_relative_position": 0.12569152467360034
+    },
+    {
+      "api": "ntquerykey",
+      "benign_reports": 282,
+      "benign_share": 0.47,
+      "malware_reports": 313,
+      "malware_share": 0.5216666666666666,
+      "median_first_relative_position": 0.14372881355932204
+    },
+    {
+      "api": "readprocessmemory",
+      "benign_reports": 45,
+      "benign_share": 0.075,
+      "malware_reports": 126,
+      "malware_share": 0.21,
+      "median_first_relative_position": 0.2075096945048709
+    },
+    {
+      "api": "getusernamea",
+      "benign_reports": 1,
+      "benign_share": 0.0016666666666666668,
+      "malware_reports": 38,
+      "malware_share": 0.06333333333333334,
+      "median_first_relative_position": 0.7063273727647867
+    },
+    {
+      "api": "ntcreatenamedpipefile",
+      "benign_reports": 52,
+      "benign_share": 0.08666666666666667,
+      "malware_reports": 78,
+      "malware_share": 0.13,
+      "median_first_relative_position": 0.3357009288559727
+    },
+    {
+      "api": "createthread",
+      "benign_reports": 282,
+      "benign_share": 0.47,
+      "malware_reports": 241,
+      "malware_share": 0.40166666666666667,
+      "median_first_relative_position": 0.212665810868635
+    },
+    {
+      "api": "getsystemtime",
+      "benign_reports": 180,
+      "benign_share": 0.3,
+      "malware_reports": 133,
+      "malware_share": 0.22166666666666668,
+      "median_first_relative_position": 0.42157068062827224
+    },
+    {
+      "api": "cryptdestroyhash",
+      "benign_reports": 53,
+      "benign_share": 0.08833333333333333,
+      "malware_reports": 100,
+      "malware_share": 0.16666666666666666,
+      "median_first_relative_position": 0.3859026369168357
+    },
+    {
+      "api": "ntcreatedirectoryobject",
+      "benign_reports": 1,
+      "benign_share": 0.0016666666666666668,
+      "malware_reports": 0,
+      "malware_share": 0.0,
+      "median_first_relative_position": 0.07112970711297072
+    },
+    {
+      "api": "ntopenfile",
+      "benign_reports": 569,
+      "benign_share": 0.9483333333333334,
+      "malware_reports": 500,
+      "malware_share": 0.8333333333333334,
+      "median_first_relative_position": 0.03699613473219216
+    },
+    {
+      "api": "getdiskfreespaceexw",
+      "benign_reports": 265,
+      "benign_share": 0.44166666666666665,
+      "malware_reports": 146,
+      "malware_share": 0.24333333333333335,
+      "median_first_relative_position": 0.3236819360414866
+    },
+    {
+      "api": "varbstrcat",
+      "benign_reports": 3,
+      "benign_share": 0.005,
+      "malware_reports": 23,
+      "malware_share": 0.03833333333333333,
+      "median_first_relative_position": 0.9224956403797714
+    },
+    {
+      "api": "ntcreatetransaction",
+      "benign_reports": 2,
+      "benign_share": 0.0033333333333333335,
+      "malware_reports": 3,
+      "malware_share": 0.005,
+      "median_first_relative_position": 0.4584269662921348
+    },
+    {
+      "api": "rtluserthreadstart",
+      "benign_reports": 600,
+      "benign_share": 1.0,
+      "malware_reports": 599,
+      "malware_share": 0.9983333333333333,
+      "median_first_relative_position": 0.002053610030263727
+    },
+    {
+      "api": "ntloadkey",
+      "benign_reports": 0,
+      "benign_share": 0.0,
+      "malware_reports": 1,
+      "malware_share": 0.0016666666666666668,
+      "median_first_relative_position": 0.9360627846989737
+    },
+    {
+      "api": "regclosekey",
+      "benign_reports": 527,
+      "benign_share": 0.8783333333333333,
+      "malware_reports": 463,
+      "malware_share": 0.7716666666666666,
+      "median_first_relative_position": 0.09668257168434355
+    },
+    {
+      "api": "cryptderivekey",
+      "benign_reports": 1,
+      "benign_share": 0.0016666666666666668,
+      "malware_reports": 1,
+      "malware_share": 0.0016666666666666668,
+      "median_first_relative_position": 0.4841807528012395
+    },
+    {
+      "api": "getkeyboardlayout",
+      "benign_reports": 172,
+      "benign_share": 0.2866666666666667,
+      "malware_reports": 128,
+      "malware_share": 0.21333333333333335,
+      "median_first_relative_position": 0.1945108464301223
+    },
+    {
+      "api": "setupdigetdeviceregistrypropertya",
+      "benign_reports": 2,
+      "benign_share": 0.0033333333333333335,
+      "malware_reports": 0,
+      "malware_share": 0.0,
+      "median_first_relative_position": 0.8249306778600913
+    }
+  ]
+}

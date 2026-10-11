@@ -90,7 +90,7 @@ def main():
     args = ap.parse_args()
 
     paths = []
-    for folder in ("benign_reports", "training_reports", "counterfactual_reports"):
+    for folder in ("benign_reports", "training_reports"):
         found = sorted(glob.glob(os.path.join(args.data_dir, folder, "*.json")))
         if args.max_per_folder:
             found = found[: args.max_per_folder]

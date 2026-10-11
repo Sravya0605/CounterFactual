@@ -8,7 +8,7 @@
 - Generates candidate edits by deleting nodes/edges or applying curated substitutions.
 - Validates candidates against process context, resource lifetimes, dependency closure, and temporal order.
 - Scores the original graph first, then scores feasible edited graphs; only a confirmed verdict flip is a counterfactual.
-- Exports structural candidate reports and classifier-confirmed explanation reports separately.
+- Writes classifier-confirmed explanations; synthetic Tier-2 round-trip validation stays in memory.
 
 ## Project layout
 
@@ -88,10 +88,46 @@ The explanation engine writes a JSON object containing:
 - the input path
 - graph size statistics
 - the classifier-confirmed counterfactual candidate, when a flip is found
+- a readable flip summary and API-level details for each edit
 - edited graph summary statistics
 - feasibility and search provenance
+
+The full pipeline writes an explanation for every successful flip into the
+counterfactual output directory:
+
+- `<sample>_counterfactual_explanation.json`: classifier scores, candidate
+  edits, per-edit node/API details, and in-memory Tier-2 round-trip results
+
+## Full current-corpus run
+
+For the current `data/` corpus (757 benign reports and 1,049 malware reports),
+this command trains on all benign reports and a seeded sample of 839 malware
+reports, then searches the remaining 210 malware reports. Counterfactual
+reports are written to a separate directory so earlier results are preserved:
+
+```powershell
+python run_full_pipeline.py --backend gnn --seed 0 --max-per-class 839 --max-counterfactual 210 --per-file-timeout 1800 --out pipeline_complete_dataset_results.json --counterfactual-output-dir data/counterfactual_reports_complete
+```
+
+The run writes a JSONL checkpoint beside the results file as each malware
+report completes. If interrupted, rerun the same command with `--resume` to
+reuse matching completed results; errored or timed-out reports are retried.
+
+## Boilerplate-excluded counterfactual run
+
+Compute boilerplate API labels from the exact training reports in a saved
+pipeline run, then pass that JSON to the restricted candidate search:
+
+```powershell
+python scripts\analyze_training_api_prevalence.py --results pipeline_results.json --out api_prevalence.json
+python run_full_pipeline.py --backend gnn --seed 7 --max-per-class 600 --max-counterfactual 300 --reuse-model --exclude-boilerplate --boilerplate-apis-file api_prevalence.json --per-file-timeout 1800 --out pipeline_results_boilerplate_excluded.json --counterfactual-output-dir data\counterfactual_reports_boilerplate_excluded
+```
+
+`--reuse-model` loads `models\pipeline_gnn.pkl` instead of retraining or
+overwriting it. The exclusion is applied during candidate generation,
+including single-node pools, combinations, and trio extensions. Timed-out
+reports are recorded as `timed_out` in the results and checkpoint files.
 
 ## Notes
 
 This is still a research prototype rather than a production-grade malware analysis platform. Synthetic benign reports are not substitutes for real benign CAPE captures: they are useful for validating plumbing and training experiments, but can introduce generator-specific shortcuts. Actual executable correspondence still requires replaying a controlled program in CAPE; the synthetic edited trace is a structural representation, not proof of execution.
-

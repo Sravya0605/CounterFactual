@@ -1,18 +1,35 @@
 import json
+import multiprocessing
 import os
 import tempfile
 import unittest
+from concurrent.futures import ProcessPoolExecutor
 from pathlib import Path
+from unittest.mock import patch
 import networkx as nx
 from src.counterfactual.engine import CounterfactualEngine
 from src.counterfactual.feasibility import FeasibilityContext, apply_candidate, validate_candidate
-from src.counterfactual.tier2 import generate_synthetic_cape_report
+from src.counterfactual.tier2 import build_synthetic_cape_report, generate_synthetic_cape_report
 from src.counterfactual.search import CounterfactualSearch
 from src.classifier.heuristic_model import HeuristicClassifier
 from src.graph.graph_builder import build_behavior_graph
-from src.ingestion.parser import parse_cape_json
+from src.ingestion.parser import parse_cape_json, parse_cape_report
 from src.utils.graph_features import graph_list_to_bow, graph_to_normalized_api_features, graph_to_sublinear_api_features
 from src.utils.pyg_adapter import build_api_vocab, graph_to_pyg_data
+
+
+def _send_test_worker_result(connection, cape_json_path, backend, model_path):
+    import time
+
+    time.sleep(1)
+    connection.send({
+        "output": {
+            "path": cape_json_path,
+            "backend": backend,
+            "model_path": model_path,
+        }
+    })
+    connection.close()
 
 
 class ParserGraphTest(unittest.TestCase):
@@ -28,6 +45,160 @@ class ParserGraphTest(unittest.TestCase):
         self.assertGreater(G.number_of_nodes(), 0)
         self.assertGreater(G.number_of_edges(), 0)
         self.assertTrue(any(node.get("entity_type") == "process" for _, node in G.nodes(data=True)))
+
+    def test_pipeline_checkpoint_round_trip_and_config_validation(self):
+        from run_full_pipeline import (
+            _append_checkpoint_row,
+            _atomic_write_json,
+            _load_checkpoint,
+            _write_checkpoint_header,
+        )
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            checkpoint = os.path.join(tmpdir, "run.checkpoint.jsonl")
+            config = {"seed": 7, "counterfactual_files": ["report.json"]}
+            header = {"type": "metadata", "run_config": config}
+            row = {"file": "report.json", "status": "no_flip_found"}
+            _write_checkpoint_header(checkpoint, header)
+            _append_checkpoint_row(checkpoint, row)
+
+            loaded_header, rows = _load_checkpoint(checkpoint, config)
+            self.assertEqual(loaded_header, header)
+            self.assertEqual(rows, {"report.json": row})
+            with self.assertRaisesRegex(ValueError, "configuration or selected files differ"):
+                _load_checkpoint(checkpoint, {"seed": 8})
+
+            output_path = os.path.join(tmpdir, "result.json")
+            _atomic_write_json(output_path, {"results": [row]})
+            with open(output_path, "r", encoding="utf-8") as handle:
+                self.assertEqual(json.load(handle), {"results": [row]})
+            self.assertEqual(
+                [name for name in os.listdir(tmpdir) if name.endswith(".tmp")],
+                [],
+            )
+
+    def test_pipeline_counterfactual_hard_timeout_terminates_worker(self):
+        from run_full_pipeline import run_counterfactual_with_timeout
+
+        result = run_counterfactual_with_timeout(
+            engine=None,
+            cape_json_path="report.json",
+            backend="heuristic",
+            model_path="unused.pkl",
+            timeout_seconds=0.1,
+            worker_target=_send_test_worker_result,
+        )
+
+        self.assertTrue(result["timed_out"])
+        self.assertEqual(result["timeout_seconds"], 0.1)
+
+    def test_pipeline_can_run_a_counterfactual_in_a_worker_without_a_timeout(self):
+        from run_full_pipeline import run_counterfactual_with_timeout
+
+        result = run_counterfactual_with_timeout(
+            engine=None,
+            cape_json_path="report.json",
+            backend="heuristic",
+            model_path="unused.pkl",
+            worker_target=_send_test_worker_result,
+            force_process=True,
+        )
+
+        self.assertEqual(result["output"]["path"], "report.json")
+        self.assertEqual(result["output"]["backend"], "heuristic")
+
+    def test_pipeline_saves_explanations_without_synthetic_trace_files(self):
+        from run_full_pipeline import _save_counterfactual_explanation
+
+        explanation = {
+            "input": "sample.json",
+            "graph_nodes": 4,
+            "result": {
+                "status": "completed",
+                "candidate": {"delete_nodes": ["n1"]},
+                "explanation": {"text": "Removing an API flips the model."},
+            },
+        }
+        with tempfile.TemporaryDirectory() as tmpdir:
+            explanation_path = _save_counterfactual_explanation(
+                explanation,
+                "sample.json",
+                tmpdir,
+            )
+
+            self.assertTrue(os.path.isfile(explanation_path))
+            self.assertEqual(
+                os.path.basename(explanation_path),
+                "sample_counterfactual_explanation.json",
+            )
+            with open(explanation_path, "r", encoding="utf-8") as handle:
+                saved_explanation = json.load(handle)
+            self.assertEqual(
+                saved_explanation["artifact_type"],
+                "counterfactual_explanation",
+            )
+            self.assertNotIn(
+                "counterfactual_report",
+                saved_explanation["result"],
+            )
+            self.assertEqual(
+                [name for name in os.listdir(tmpdir) if name.endswith(".json")],
+                ["sample_counterfactual_explanation.json"],
+            )
+
+    def test_persistent_counterfactual_worker_process_runs_report(self):
+        from run_full_pipeline import (
+            _initialize_parallel_worker,
+            _run_parallel_counterfactual_task,
+        )
+
+        with ProcessPoolExecutor(
+            max_workers=1,
+            mp_context=multiprocessing.get_context("spawn"),
+            initializer=_initialize_parallel_worker,
+            initargs=("heuristic", "unused.pkl"),
+        ) as executor:
+            result, _ = executor.submit(
+                _run_parallel_counterfactual_task,
+                self.sample,
+            ).result(timeout=60)
+
+        self.assertIn("graph_nodes", result["output"])
+        self.assertIn("result", result["output"])
+
+    def test_engine_validates_synthetic_round_trip_in_memory_for_completed_flip(self):
+        from src.counterfactual.search import CounterfactualSearch
+
+        edited_graph = build_behavior_graph(parse_cape_json(self.sample))
+        deleted_node = next(
+            node
+            for node, data in edited_graph.nodes(data=True)
+            if data.get("entity_type") != "resource"
+            and str(data.get("api") or "").lower() != "process"
+        )
+        deleted_api = edited_graph.nodes[deleted_node].get("api")
+        edited_graph.remove_node(deleted_node)
+        completed = {
+            "status": "completed",
+            "candidate": {"delete_nodes": [deleted_node], "substitute": {}},
+            "edited_graph": edited_graph,
+            "orig_prob": 0.9,
+            "new_prob": 0.1,
+            "best_prob": 0.1,
+        }
+        with patch.object(CounterfactualSearch, "find_flip", return_value=completed):
+            output = CounterfactualEngine(classifier_model=object()).explain_from_cape(
+                self.sample
+            )
+
+        self.assertIn("0.9000 to 0.1000", output["result"]["explanation"]["text"])
+        self.assertEqual(output["result"]["tier2_round_trip"]["status"], "passed")
+        self.assertGreater(output["result"]["tier2_round_trip"]["parsed_events"], 0)
+        self.assertNotIn("counterfactual_report", output["result"])
+        self.assertEqual(
+            output["result"]["explanation"]["edits"][0]["api"],
+            deleted_api,
+        )
 
     def test_search_propose_and_run(self):
         evts = parse_cape_json(self.sample)
@@ -243,7 +414,7 @@ class ParserGraphTest(unittest.TestCase):
         class ProbabilityByGraphSizeClassifier:
             def predict_proba(self, graphs):
                 node_count = graphs[0].number_of_nodes()
-                return [0.9 if node_count == 20 else 0.54 if node_count == 17 else 0.4]
+                return [0.9 if node_count == 20 else 0.8 if node_count == 17 else 0.4]
 
         G = nx.DiGraph()
         for index in range(20):
@@ -252,23 +423,28 @@ class ParserGraphTest(unittest.TestCase):
         search = CounterfactualSearch(graph=G)
         search.max_edits = 4
         trio = {"delete_nodes": ["n0", "n1", "n2"], "substitute": {}}
-        search._generate_with_guidance = lambda classifier, guidance_model: {
-            "status": "candidates_available",
-            "candidate": None,
-            "edited_graph": None,
-            "feasible_candidates": [trio],
-            "candidate_trace": [{"candidate": trio, "valid": True}],
-            "search": {
-                "proposed_candidates": 1,
-                "evaluated_candidates": 1,
-                "runtime_seconds": 0.0,
-            },
-            "constraint_comparison": {
-                "proposed": 1,
-                "feasible": 1,
-                "infeasible": 0,
-            },
-        }
+        def generate_candidates(classifier, guidance_model):
+            self.assertIsNotNone(classifier)
+            self.assertIsNotNone(guidance_model)
+            return {
+                "status": "candidates_available",
+                "candidate": None,
+                "edited_graph": None,
+                "feasible_candidates": [trio],
+                "candidate_trace": [{"candidate": trio, "valid": True}],
+                "search": {
+                    "proposed_candidates": 1,
+                    "evaluated_candidates": 1,
+                    "runtime_seconds": 0.0,
+                },
+                "constraint_comparison": {
+                    "proposed": 1,
+                    "feasible": 1,
+                    "infeasible": 0,
+                },
+            }
+
+        search._generate_with_guidance = generate_candidates
 
         result = search.find_flip(ProbabilityByGraphSizeClassifier())
 
@@ -282,6 +458,25 @@ class ParserGraphTest(unittest.TestCase):
         self.assertEqual(result["search"]["proposed_candidates"], 18)
         self.assertEqual(result["search"]["evaluated_candidates"], 18)
         self.assertEqual(result["constraint_comparison"]["feasible"], 18)
+
+    def test_search_proposes_and_validates_hybrid_deletion_substitution(self):
+        G = nx.DiGraph()
+        G.add_node("proc:1", api="process", entity_type="process")
+        G.add_node("delete1", api="CreateFile", entity_type="file")
+        G.add_node("delete2", api="WriteFile", entity_type="file")
+        G.add_node("substitute", api="NtOpenKeyEx", entity_type="registry")
+        for node in ("delete1", "delete2", "substitute"):
+            G.add_edge("proc:1", node, type="process")
+
+        search = CounterfactualSearch(graph=G)
+        candidates = search.propose()
+
+        hybrid = {
+            "delete_nodes": ["delete1", "delete2"],
+            "substitute": {"substitute": "RegOpenKeyExW"},
+        }
+        self.assertIn(hybrid, candidates)
+        self.assertTrue(search.validate(hybrid))
 
     def test_resource_lifetime_close_socket_is_not_an_open(self):
         from src.counterfactual.feasibility import _check_resource_lifetime
@@ -414,13 +609,9 @@ class ParserGraphTest(unittest.TestCase):
         G.add_node("n0", api="CreateFile", resources=["C:\\temp\\foo.txt"], entity_type="file")
         G.add_edge("proc:1000", "n0", type="process")
 
-        with tempfile.TemporaryDirectory() as tmpdir:
-            out_path = Path(tmpdir) / "synthetic.json"
-            generate_synthetic_cape_report(G, str(out_path))
-            payload = json.loads(out_path.read_text(encoding="utf-8"))
-            calls = payload["behavior"]["processes"][0]["calls"]
-            self.assertEqual(calls[0]["api"], "CreateFile")
-            self.assertEqual(len(calls), 1)
+        payload = build_synthetic_cape_report(G)
+        events = parse_cape_report(payload)
+        self.assertEqual([event["api"] for event in events], ["CreateFile"])
 
     def test_tier2_round_trip_skips_resource_nodes_and_preserves_counts(self):
         G = nx.DiGraph()
@@ -441,14 +632,11 @@ class ParserGraphTest(unittest.TestCase):
             handle="0x1",
         )
 
-        with tempfile.TemporaryDirectory() as tmpdir:
-            out_path = Path(tmpdir) / "synthetic.json"
-            generate_synthetic_cape_report(G, str(out_path))
-            payload = json.loads(out_path.read_text(encoding="utf-8"))
-            calls = payload["behavior"]["processes"][0]["calls"]
-            self.assertEqual([call["api"] for call in calls], ["WriteFile", "WriteFile"])
-            self.assertTrue(all(call["api"] != "unknown" for call in calls))
-            self.assertEqual(calls[0]["arguments"]["path"], "C:\\temp\\foo.txt")
+        payload = build_synthetic_cape_report(G)
+        events = parse_cape_report(payload)
+        self.assertEqual([event["api"] for event in events], ["WriteFile", "WriteFile"])
+        self.assertTrue(all(event["api"] != "unknown" for event in events))
+        self.assertEqual(events[0]["resources"], ["C:\\temp\\foo.txt"])
 
     def test_synthetic_counterfactual_reports_preserve_repeated_calls(self):
         payload = {
